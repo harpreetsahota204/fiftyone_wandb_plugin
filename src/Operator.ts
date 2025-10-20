@@ -26,4 +26,4 @@ class SetIframeURL extends Operator {
   }
 }
 
-registerOperator(SetIframeURL, "@voxel51/wandb");
+registerOperator(SetIframeURL, "@harpreetsahota/wandb");

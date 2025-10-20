@@ -451,7 +451,7 @@ class ShowWandBRun(foo.Operator):
 
         # Update iframe URL and open panel
         ctx.trigger(
-            "@voxel51/wandb/set_iframe_url",
+            "@harpreetsahota/wandb/set_iframe_url",
             params=dict(url=url),
         )
         ctx.trigger(

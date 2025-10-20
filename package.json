@@ -1,5 +1,5 @@
 {
-  "name": "@voxel51/wandb",
+  "name": "@harpreetsahota/wandb",
   "version": "0.1.0",
   "main": "src/WandB.tsx",
   "license": "Apache 2.0",
