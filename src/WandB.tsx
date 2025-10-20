@@ -17,24 +17,13 @@ import "./Operator";
 
 export const WandBIcon = ({ size = "1rem", style = {} }) => {
   return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
+    <img
+      src="/assets/wandb.svg"
+      alt="W&B Logo"
       height={size}
       width={size}
       style={style}
-      viewBox="0 0 155 154"
-    >
-      <circle cx="77" cy="77" r="68" fill="#FFBE00" />
-      <circle cx="42" cy="56" r="11" fill="#000" />
-      <circle cx="112" cy="56" r="11" fill="#000" />
-      <path
-        d="M42 92 Q77 112 112 92"
-        stroke="#000"
-        strokeWidth="8"
-        fill="none"
-        strokeLinecap="round"
-      />
-    </svg>
+    />
   );
 };
 
