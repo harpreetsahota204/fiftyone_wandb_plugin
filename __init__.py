@@ -418,6 +418,10 @@ class ShowWandBRun(foo.Operator):
         project_name = ctx.params.get("project_name", None)
         run_name = ctx.params.get("run_name", None)
         
+        # Fallback to environment variable if no project selected
+        if project_name is None:
+            project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
+        
         # Construct URL
         if project_name is None:
             url = DEFAULT_WANDB_URL
