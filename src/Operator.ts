@@ -28,7 +28,10 @@ class SetWandBURL extends Operator {
     // Open in new tab immediately
     if (params.url) {
       window.open(params.url, "_blank", "noopener,noreferrer");
+      return { success: true, url: params.url };
     }
+    
+    return { success: false, error: "No URL provided" };
   }
 }
 
