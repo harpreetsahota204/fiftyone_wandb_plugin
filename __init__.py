@@ -279,6 +279,7 @@ class LogWandBRun(foo.Operator):
             dynamic=True,
             unlisted=True,
         )
+        _config.icon = "/assets/wandb.svg"
         return _config
 
     def __call__(
