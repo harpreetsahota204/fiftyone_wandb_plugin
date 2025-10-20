@@ -11,6 +11,8 @@ operators:
   - log_wandb_run
   - set_wandb_url
   - show_wandb_run
+  - show_wandb_report
+  - embed_report
 secrets:
   - FIFTYONE_WANDB_API_KEY
   - FIFTYONE_WANDB_ENTITY

@@ -8,10 +8,13 @@ import {
   Typography,
   Paper,
   Link,
+  IconButton,
+  Tooltip,
 } from "@mui/material";
-import { useRecoilValue } from "recoil";
-import { wandbURLAtom } from "./State";
+import { useRecoilValue, useSetRecoilState } from "recoil";
+import { wandbURLAtom, reportModeAtom } from "./State";
 import OpenInNewIcon from "@mui/icons-material/OpenInNew";
+import CloseIcon from "@mui/icons-material/Close";
 import "./Operator";
 
 export const WandBIcon = ({ size = "1rem", style = {} }) => {
@@ -29,12 +32,67 @@ export const WandBIcon = ({ size = "1rem", style = {} }) => {
 export default function WandBPanel() {
   const defaultUrl = "https://wandb.ai";
   const wandbUrl = useRecoilValue(wandbURLAtom);
+  const reportMode = useRecoilValue(reportModeAtom);
+  const setReportMode = useSetRecoilState(reportModeAtom);
   const urlToOpen = wandbUrl || defaultUrl;
 
   const handleOpenDashboard = () => {
     window.open(urlToOpen, "_blank", "noopener,noreferrer");
   };
 
+  const handleCloseReport = () => {
+    setReportMode(false);
+  };
+
+  // If in report mode, show iframe
+  if (reportMode) {
+    return (
+      <Stack
+        sx={{
+          width: "100%",
+          height: "100%",
+          position: "relative",
+        }}
+      >
+        <Box
+          sx={{
+            position: "absolute",
+            top: 8,
+            right: 8,
+            zIndex: 1000,
+            backgroundColor: "rgba(255, 255, 255, 0.9)",
+            borderRadius: 1,
+          }}
+        >
+          <Tooltip title="Close embedded report">
+            <IconButton onClick={handleCloseReport} size="small">
+              <CloseIcon />
+            </IconButton>
+          </Tooltip>
+        </Box>
+        <Box
+          sx={{
+            width: "100%",
+            height: "100%",
+            overflow: "hidden",
+          }}
+        >
+          <iframe
+            style={{
+              width: "100%",
+              height: "100%",
+              border: "none",
+            }}
+            src={urlToOpen}
+            title="W&B Report"
+            allowFullScreen
+          />
+        </Box>
+      </Stack>
+    );
+  }
+
+  // Otherwise show launcher mode
   return (
     <Stack
       sx={{
@@ -81,7 +139,7 @@ export default function WandBPanel() {
         </Button>
 
         <Typography variant="caption" display="block" sx={{ marginTop: 3 }} color="text.secondary">
-          Use the "Show W&B Run" operator to view specific runs and projects.
+          Use "Show W&B Run" to open runs or "Show W&B Report" to embed reports here.
         </Typography>
       </Paper>
     </Stack>
