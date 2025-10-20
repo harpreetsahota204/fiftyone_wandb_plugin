@@ -1,10 +1,10 @@
-name: "@voxel51/wandb"
+name: "@harpreetsahota/wandb"
 description: Track model training experiments with Weights & Biases!
 version: 0.1.0
 fiftyone:
   version: ">=0.23.0"
 license: Apache 2.0
-url: "https://github.com/voxel51/fiftyone-wandb-plugin"
+url: "https://github.com/harpreetsahota204/fiftyone_wandb_plugin"
 operators:
   - open_wandb_panel
   - get_wandb_run_info
