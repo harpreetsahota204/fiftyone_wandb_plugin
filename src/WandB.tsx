@@ -17,7 +17,7 @@ import "./Operator";
 export const WandBIcon = ({ size = "1rem", style = {} }) => {
   return (
     <img
-      src="/assets/wandb.svg"
+      src="https://raw.githubusercontent.com/harpreetsahota204/fiftyone_wandb_plugin/refs/heads/main/assets/wandb.svg"
       alt="W&B Logo"
       height={size}
       width={size}

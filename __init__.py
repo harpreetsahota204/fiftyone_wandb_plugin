@@ -81,14 +81,10 @@ def _get_project_url(ctx, project_name):
     """Construct W&B project URL"""
     config = _get_wandb_config(ctx)
     entity = config["entity"]
-    print(f"[_get_project_url] entity from config: {entity}")
     if not entity:
         api = _get_wandb_api(ctx)
         entity = api.default_entity
-        print(f"[_get_project_url] entity from API: {entity}")
-    url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
-    print(f"[_get_project_url] Final URL: {url}")
-    return url
+    return f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
 
 
 def _get_run_url(ctx, project_name, run_id):
@@ -358,10 +354,8 @@ class OpenWandBPanel(foo.Operator):
         
         if project_name:
             url = _get_project_url(ctx, project_name)
-            print(f"[OpenWandBPanel] Opening project URL: {url}")
         else:
             url = DEFAULT_WANDB_URL
-            print(f"[OpenWandBPanel] No project set, opening default: {url}")
         
         ctx.trigger(
             "@harpreetsahota/wandb/set_wandb_url",
@@ -435,17 +429,11 @@ class ShowWandBRun(foo.Operator):
         if project_name is None:
             project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
         
-        # Debug logging
-        print(f"[ShowWandBRun] project_name: {project_name}")
-        print(f"[ShowWandBRun] run_name: {run_name}")
-        
         # Construct URL
         if project_name is None:
             url = DEFAULT_WANDB_URL
-            print(f"[ShowWandBRun] No project, using default: {url}")
         elif run_name is None:
             url = _get_project_url(ctx, project_name)
-            print(f"[ShowWandBRun] Project URL: {url}")
         else:
             # Get run info to get run ID
             fmt_run_name = _format_run_name(run_name)
