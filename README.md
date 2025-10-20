@@ -364,11 +364,11 @@ This plugin is released under the Apache 2.0 License.
 
 - [FiftyOne Documentation](https://docs.voxel51.com/)
 - [Weights & Biases Documentation](https://docs.wandb.ai/)
-- [Plugin GitHub Repository](https://github.com/voxel51/fiftyone-wandb-plugin)
-- [Report Issues](https://github.com/voxel51/fiftyone-wandb-plugin/issues)
+- [Plugin GitHub Repository](https://github.com/harpreetsahota204/fiftyone_wandb_plugin)
+- [Report Issues](https://github.com/harpreetsahota204/fiftyone_wandb_plugin/issues)
 
 ## Support
 
 - [FiftyOne Slack Community](https://slack.voxel51.com/)
 - [W&B Community](https://wandb.ai/community)
-- [GitHub Issues](https://github.com/voxel51/fiftyone-wandb-plugin/issues)
+- [GitHub Issues](https://github.com/harpreetsahota204/fiftyone_wandb_plugin/issues)
