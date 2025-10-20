@@ -370,6 +370,7 @@ class ShowWandBRun(foo.Operator):
         return foo.OperatorConfig(
             name="show_wandb_run",
             label="Show W&B run",
+            icon = "/assets/wandb.svg",
             dynamic=True,
             description=(
                 "View the data and metrics for a W&B project/run"
