@@ -449,11 +449,12 @@ class ShowWandBRun(foo.Operator):
                 print(f"Warning: Could not get run info: {e}")
                 url = _get_project_url(ctx, project_name)
 
-        # Update iframe URL and open panel
+        # Open W&B URL in new tab and update state
         ctx.trigger(
-            "@harpreetsahota/wandb/set_iframe_url",
+            "@harpreetsahota/wandb/set_wandb_url",
             params=dict(url=url),
         )
+        # Still open the panel to show the W&B launcher
         ctx.trigger(
             "open_panel",
             params=dict(name="WandBPanel", layout="horizontal"),

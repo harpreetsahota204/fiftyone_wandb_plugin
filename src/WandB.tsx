@@ -1,24 +1,23 @@
 import { registerComponent, PluginComponentType } from "@fiftyone/plugins";
 import { useOperatorExecutor } from "@fiftyone/operators";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Stack,
   Box,
-  TextField,
   Button,
-  CircularProgress,
-  Select,
-  MenuItem,
   Typography,
+  Paper,
+  Link,
 } from "@mui/material";
-import { useRecoilState } from "recoil";
-import { iframeURLAtom } from "./State";
+import { useRecoilValue } from "recoil";
+import { wandbURLAtom } from "./State";
+import OpenInNewIcon from "@mui/icons-material/OpenInNew";
 import "./Operator";
 
 export const WandBIcon = ({ size = "1rem", style = {} }) => {
   return (
     <img
-      src="https://raw.githubusercontent.com/harpreetsahota204/fiftyone_wandb_plugin/refs/heads/main/assets/wandb.svg"
+      src="/assets/wandb.svg"
       alt="W&B Logo"
       height={size}
       width={size}
@@ -27,68 +26,13 @@ export const WandBIcon = ({ size = "1rem", style = {} }) => {
   );
 };
 
-function useServerAvailability(defaultUrl) {
-  const [serverAvailable, setServerAvailable] = useState(true);
-  const [url, setUrl] = useState(defaultUrl);
-
-  useEffect(() => {
-    fetch(url, { mode: "no-cors" })
-      .then(() => setServerAvailable(true))
-      .catch(() => setServerAvailable(false));
-  }, [url]);
-
-  return { serverAvailable, setServerAvailable, url, setUrl };
-}
-
-const URLInputForm = ({ onSubmit }) => {
-  const [inputUrl, setInputUrl] = useState("");
-
-  const handleSubmit = (e) => {
-    e.preventDefault();
-    onSubmit(inputUrl);
-  };
-
-  return (
-    <Box
-      component="form"
-      onSubmit={handleSubmit}
-      sx={{
-        display: "flex",
-        justifyContent: "space-between",
-        p: 1,
-        bgcolor: "background.paper",
-        borderRadius: 1,
-      }}
-      noValidate
-      autoComplete="off"
-    >
-      <TextField
-        label="W&B URL"
-        variant="outlined"
-        size="small"
-        value={inputUrl}
-        onChange={(e) => setInputUrl(e.target.value)}
-        sx={{ width: "80%" }}
-      />
-      <Button type="submit" variant="contained" sx={{ marginLeft: 2 }}>
-        Update URL
-      </Button>
-    </Box>
-  );
-};
-
 export default function WandBPanel() {
   const defaultUrl = "https://wandb.ai";
+  const wandbUrl = useRecoilValue(wandbURLAtom);
+  const urlToOpen = wandbUrl || defaultUrl;
 
-  const [iframeUrl, setIframeUrl] = useRecoilState(iframeURLAtom);
-
-  console.log("iframeUrl", iframeUrl);
-
-  const { serverAvailable, setServerAvailable, url, setUrl } =
-    useServerAvailability(defaultUrl);
-
-  const handleUpdateUrl = (newUrl) => {
-    setUrl(newUrl);
+  const handleOpenDashboard = () => {
+    window.open(urlToOpen, "_blank", "noopener,noreferrer");
   };
 
   return (
@@ -98,33 +42,48 @@ export default function WandBPanel() {
         height: "100%",
         alignItems: "center",
         justifyContent: "center",
+        padding: 4,
       }}
-      spacing={1}
+      spacing={3}
     >
-      {!serverAvailable && <URLInputForm onSubmit={handleUpdateUrl} />}
-      <Box
+      <Paper
+        elevation={3}
         sx={{
-          width: "95%",
-          height: "90%",
-          overflow: "auto",
-          display: "flex",
-          flexDirection: "column",
-          justifyContent: "center",
+          padding: 4,
+          maxWidth: 600,
+          textAlign: "center",
         }}
-        key={iframeUrl || url}
       >
-        <iframe
-          style={{
-            flexGrow: 1,
-            border: "none",
-            width: "100%",
-            height: "100%",
-          }}
-          src={iframeUrl || url}
-          title="Weights & Biases Dashboard"
-          allowFullScreen
-        ></iframe>
-      </Box>
+        <Box sx={{ marginBottom: 3 }}>
+          <WandBIcon size="4rem" />
+        </Box>
+        
+        <Typography variant="h5" gutterBottom>
+          Weights & Biases Dashboard
+        </Typography>
+        
+        <Typography variant="body1" color="text.secondary" paragraph>
+          Click the button below to open your W&B dashboard in a new browser tab.
+        </Typography>
+
+        <Typography variant="body2" color="text.secondary" paragraph>
+          Current URL: <Link href={urlToOpen} target="_blank" rel="noopener noreferrer">{urlToOpen}</Link>
+        </Typography>
+
+        <Button
+          variant="contained"
+          size="large"
+          onClick={handleOpenDashboard}
+          endIcon={<OpenInNewIcon />}
+          sx={{ marginTop: 2 }}
+        >
+          Open W&B Dashboard
+        </Button>
+
+        <Typography variant="caption" display="block" sx={{ marginTop: 3 }} color="text.secondary">
+          Use the "Show W&B Run" operator to view specific runs and projects.
+        </Typography>
+      </Paper>
     </Stack>
   );
 }

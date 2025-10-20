@@ -9,7 +9,7 @@ operators:
   - open_wandb_panel
   - get_wandb_run_info
   - log_wandb_run
-  - set_iframe_url
+  - set_wandb_url
   - show_wandb_run
 secrets:
   - FIFTYONE_WANDB_API_KEY

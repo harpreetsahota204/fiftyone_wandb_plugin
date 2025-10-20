@@ -5,25 +5,31 @@ import {
   registerOperator,
 } from "@fiftyone/operators";
 import { useSetRecoilState } from "recoil";
-import { iframeURLAtom } from "./State";
+import { wandbURLAtom } from "./State";
 
-class SetIframeURL extends Operator {
+class SetWandBURL extends Operator {
   get config(): OperatorConfig {
     return new OperatorConfig({
-      name: "set_iframe_url",
-      label: "SetIframeURL",
+      name: "set_wandb_url",
+      label: "SetWandBURL",
       unlisted: true,
     });
   }
   useHooks(): {} {
-    const setIframeUrl = useSetRecoilState(iframeURLAtom);
+    const setWandBUrl = useSetRecoilState(wandbURLAtom);
     return {
-      setIframeUrl: setIframeUrl,
+      setWandBUrl: setWandBUrl,
     };
   }
   async execute({ hooks, params }: ExecutionContext) {
-    hooks.setIframeUrl(params.url);
+    // Set the URL in state
+    hooks.setWandBUrl(params.url);
+    
+    // Open in new tab immediately
+    if (params.url) {
+      window.open(params.url, "_blank", "noopener,noreferrer");
+    }
   }
 }
 
-registerOperator(SetIframeURL, "@harpreetsahota/wandb");
+registerOperator(SetWandBURL, "@harpreetsahota/wandb");

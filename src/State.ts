@@ -1,6 +1,6 @@
 import { atom } from "recoil";
 
-export const iframeURLAtom = atom({
-  key: "wandbIframeURLAtom",
+export const wandbURLAtom = atom({
+  key: "wandbURLAtom",
   default: "https://wandb.ai",
 });
