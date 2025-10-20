@@ -561,6 +561,7 @@ class ShowWandBReport(foo.Operator):
         return foo.OperatorConfig(
             name="show_wandb_report",
             label="Show W&B Report",
+            icon = "/assets/wandb.svg",
             dynamic=True,
             description=(
                 "View a W&B report embedded in FiftyOne. "
@@ -617,25 +618,24 @@ class ShowWandBReport(foo.Operator):
                 )
                 return types.Property(inputs)
             
-            # Create dropdown of reports
+            # Create dropdown of reports with display names
             report_choices = types.DropdownView()
+            
             for report in reports:
-                # Build label with name and description
-                label = report.display_name or report.name
+                # Build display label with name and description
+                display_name = report.display_name or report.name
                 if report.description:
                     # Truncate description if too long
                     desc = report.description[:250] + "..." if len(report.description) > 250 else report.description
-                    label = f"{label} - {desc}"
+                    label = f"{display_name} - {desc}"
                 else:
-                    label = f"{label} - No description provided"
+                    label = f"{display_name} - No description provided"
                 
-                report_choices.add_choice(
-                    report.url,
-                    label=label
-                )
+                # Use label as the choice value (what user sees)
+                report_choices.add_choice(label, label=label)
             
             inputs.enum(
-                "report_url",
+                "report_label",
                 report_choices.values(),
                 label="Select Report",
                 description="Choose a W&B report to embed",
@@ -655,9 +655,36 @@ class ShowWandBReport(foo.Operator):
         return types.Property(inputs)
 
     def execute(self, ctx):
-        # Get report URL from selection or construct it
-        report_url = ctx.params.get("report_url", None)
+        # Get selected report label
+        report_label = ctx.params.get("report_label", None)
+        report_url = None
         
+        if report_label:
+            # Fetch reports again to find the URL matching the label
+            entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
+            project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
+            
+            if entity and project_name:
+                try:
+                    api = _get_wandb_api(ctx)
+                    reports = list(api.reports(path=f"{entity}/{project_name}", per_page=100))
+                    
+                    # Find the report that matches the label
+                    for report in reports:
+                        display_name = report.display_name or report.name
+                        if report.description:
+                            desc = report.description[:250] + "..." if len(report.description) > 250 else report.description
+                            label = f"{display_name} - {desc}"
+                        else:
+                            label = f"{display_name} - No description provided"
+                        
+                        if label == report_label:
+                            report_url = report.url
+                            break
+                except Exception as e:
+                    print(f"Error fetching reports: {e}")
+        
+        # Fallback if no report URL found
         if not report_url:
             entity = ctx.params.get("entity") or ctx.secret("FIFTYONE_WANDB_ENTITY")
             project_name = ctx.params.get("project_name") or ctx.secret("FIFTYONE_WANDB_PROJECT")
