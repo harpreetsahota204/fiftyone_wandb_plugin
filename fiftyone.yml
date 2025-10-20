@@ -12,6 +12,6 @@ operators:
   - set_iframe_url
   - show_wandb_run
 secrets:
-  - WANDB_API_KEY
-  - WANDB_ENTITY
-  - WANDB_PROJECT
+  - FIFTYONE_WANDB_API_KEY
+  - FIFTYONE_WANDB_ENTITY
+  - FIFTYONE_WANDB_PROJECT

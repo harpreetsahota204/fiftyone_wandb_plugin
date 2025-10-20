@@ -48,9 +48,9 @@ You need to authenticate with W&B. You have several options:
 **Option A: Set environment variables (Recommended)**
 
 ```bash
-export WANDB_API_KEY="your-api-key-here"
-export WANDB_ENTITY="your-username-or-team"  # Optional
-export WANDB_PROJECT="your-default-project"   # Optional
+export FIFTYONE_WANDB_API_KEY="your-api-key-here"
+export FIFTYONE_WANDB_ENTITY="your-username-or-team"  # Optional
+export FIFTYONE_WANDB_PROJECT="your-default-project"   # Optional
 ```
 
 You can find your API key at [https://wandb.ai/authorize](https://wandb.ai/authorize).
@@ -71,9 +71,9 @@ If you prefer to configure secrets through FiftyOne:
 import fiftyone as fo
 
 # Set W&B secrets
-fo.set_secret("WANDB_API_KEY", "your-api-key-here")
-fo.set_secret("WANDB_ENTITY", "your-username-or-team")
-fo.set_secret("WANDB_PROJECT", "your-default-project")
+fo.set_secret("FIFTYONE_WANDB_API_KEY", "your-api-key-here")
+fo.set_secret("FIFTYONE_WANDB_ENTITY", "your-username-or-team")
+fo.set_secret("FIFTYONE_WANDB_PROJECT", "your-default-project")
 ```
 
 ## Usage
@@ -254,11 +254,11 @@ Install W&B:
 pip install wandb
 ```
 
-### "WANDB_API_KEY not set"
+### "FIFTYONE_WANDB_API_KEY not set"
 
 Set your API key:
 ```bash
-export WANDB_API_KEY="your-api-key"
+export FIFTYONE_WANDB_API_KEY="your-api-key"
 ```
 
 Or log in:
