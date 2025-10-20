@@ -380,87 +380,185 @@ class ShowWandBRun(foo.Operator):
 
     def resolve_input(self, ctx):
         inputs = types.Object()
-
-        projects = get_candidate_project_names(ctx)
-        if len(projects) == 0:
+        
+        # Get entity and project from environment
+        entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
+        project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
+        
+        if not entity or not project_name:
             inputs.view(
                 "warning",
                 types.Warning(
-                    label="No W&B projects",
-                    description="W&B home page will be opened instead. "
-                               "Log a W&B run to your dataset first.",
+                    label="Configuration Required",
+                    description="Please set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_PROJECT "
+                               "environment variables.",
                 ),
             )
-            return types.Property(inputs)
-
-        project_choices = types.DropdownView()
-        for project in projects:
-            project_choices.add_choice(project, label=project)
-        inputs.enum(
-            "project_name",
-            project_choices.values(),
-            label="Project name",
-            description="The name of the W&B project to display",
-            required=True,
-            view=types.DropdownView(),
-        )
-
-        project_name = ctx.params.get("project_name", None)
-        if project_name is not None:
-            runs = get_candidate_run_names(ctx, project_name)
-            if len(runs) > 0:
-                run_choices = types.DropdownView()
-                for run in runs:
-                    run_choices.add_choice(run, label=run)
-                inputs.enum(
-                    "run_name",
-                    run_choices.values(),
-                    label="Run name",
-                    description="The name of the W&B run to display",
-                    required=False,
-                    view=types.DropdownView(),
+            # Allow manual input as fallback
+            if not entity:
+                inputs.str(
+                    "entity",
+                    label="W&B Entity",
+                    description="Your W&B username or team name",
+                    required=True,
                 )
-
+            if not project_name:
+                inputs.str(
+                    "project_name",
+                    label="W&B Project",
+                    description="The W&B project name",
+                    required=True,
+                )
+            return types.Property(inputs)
+        
+        # Fetch runs from W&B API
+        try:
+            api = _get_wandb_api(ctx)
+            runs = list(api.runs(path=f"{entity}/{project_name}", per_page=100))
+            
+            if len(runs) == 0:
+                inputs.view(
+                    "warning",
+                    types.Warning(
+                        label="No Runs Found",
+                        description=f"No runs found for {entity}/{project_name}. "
+                                   "The project page will be opened instead.",
+                    ),
+                )
+                return types.Property(inputs)
+            
+            # Create dropdown of runs with detailed info
+            run_choices = types.DropdownView()
+            for run in runs:
+                # Start with run name and state
+                label = f"{run.name} ({run.state})"
+                
+                # Add summary metrics info if available
+                try:
+                    summary = dict(run.summary)
+                    
+                    # Format timestamp if available
+                    if "_timestamp" in summary:
+                        from datetime import datetime
+                        timestamp = summary["_timestamp"]
+                        dt = datetime.fromtimestamp(timestamp)
+                        readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                        label += f" | {readable_time}"
+                    
+                    # Add key metrics (excluding private/internal fields)
+                    metrics = {k: v for k, v in summary.items() 
+                              if not k.startswith("_") and isinstance(v, (int, float))}
+                    
+                    if metrics:
+                        # Show first 2 metrics to keep label concise
+                        metric_strs = [f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" 
+                                      for k, v in list(metrics.items())[:2]]
+                        if metric_strs:
+                            label += f" | {', '.join(metric_strs)}"
+                        
+                        # If there are more metrics, indicate that
+                        if len(metrics) > 2:
+                            label += f" (+{len(metrics)-2} more)"
+                    
+                    # Add _wandb info if available (can contain any arbitrary data)
+                    if "_wandb" in summary:
+                        wandb_data = summary["_wandb"]
+                        # Convert to string representation, handle any type
+                        wandb_str = str(wandb_data)
+                        # Truncate if too long
+                        if len(wandb_str) > 50:
+                            wandb_str = wandb_str[:50] + "..."
+                        label += f" | wandb: {wandb_str}"
+                    
+                except Exception as e:
+                    # If we can't get summary, just use basic label
+                    pass
+                
+                run_choices.add_choice(label, label=label)
+            
+            inputs.enum(
+                "run_label",
+                run_choices.values(),
+                label="Select Run",
+                description="Choose a W&B run to view",
+                required=False,
+                view=types.DropdownView(),
+            )
+            
+        except Exception as e:
+            inputs.view(
+                "error",
+                types.Error(
+                    label="Error Loading Runs",
+                    description=f"Failed to fetch runs: {str(e)}",
+                ),
+            )
+        
         return types.Property(inputs)
 
     def execute(self, ctx):
-        project_name = ctx.params.get("project_name", None)
-        run_name = ctx.params.get("run_name", None)
+        # Get selected run label
+        run_label = ctx.params.get("run_label", None)
+        entity = ctx.params.get("entity") or ctx.secret("FIFTYONE_WANDB_ENTITY")
+        project_name = ctx.params.get("project_name") or ctx.secret("FIFTYONE_WANDB_PROJECT")
         
-        # Fallback to environment variable if no project selected
-        if project_name is None:
-            project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
+        url = None
         
-        # Construct URL
-        if project_name is None:
-            url = DEFAULT_WANDB_URL
-        elif run_name is None:
-            url = _get_project_url(ctx, project_name)
-        else:
-            # Get run info to get run ID
-            fmt_run_name = _format_run_name(run_name)
+        if run_label and entity and project_name:
+            # Fetch runs to find the URL matching the label
             try:
-                run_info = ctx.dataset.get_run_info(fmt_run_name)
-                run_id = run_info.config.run_id
-                url = _get_run_url(ctx, project_name, run_id)
+                api = _get_wandb_api(ctx)
+                runs = list(api.runs(path=f"{entity}/{project_name}", per_page=100))
                 
-                # Update view to show relevant fields
-                keep_fields = []
-                if hasattr(run_info.config, "gt_field"):
-                    keep_fields.append(run_info.config.gt_field)
-                if hasattr(run_info.config, "predictions_field"):
-                    keep_fields.append(run_info.config.predictions_field)
-                
-                if keep_fields:
-                    view = ctx.dataset.select_fields(keep_fields)
-                    ctx.trigger(
-                        "set_view",
-                        params=dict(view=serialize_view(view)),
-                    )
+                # Find the run that matches the label (reconstruct same label format)
+                for run in runs:
+                    # Reconstruct the label with all details
+                    label = f"{run.name} ({run.state})"
+                    
+                    try:
+                        summary = dict(run.summary)
+                        
+                        if "_timestamp" in summary:
+                            from datetime import datetime
+                            timestamp = summary["_timestamp"]
+                            dt = datetime.fromtimestamp(timestamp)
+                            readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
+                            label += f" | {readable_time}"
+                        
+                        metrics = {k: v for k, v in summary.items() 
+                                  if not k.startswith("_") and isinstance(v, (int, float))}
+                        
+                        if metrics:
+                            metric_strs = [f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" 
+                                          for k, v in list(metrics.items())[:2]]
+                            if metric_strs:
+                                label += f" | {', '.join(metric_strs)}"
+                            
+                            if len(metrics) > 2:
+                                label += f" (+{len(metrics)-2} more)"
+                        
+                        if "_wandb" in summary:
+                            wandb_data = summary["_wandb"]
+                            wandb_str = str(wandb_data)
+                            if len(wandb_str) > 50:
+                                wandb_str = wandb_str[:50] + "..."
+                            label += f" | wandb: {wandb_str}"
+                    except:
+                        pass
+                    
+                    if label == run_label:
+                        url = run.url
+                        break
             except Exception as e:
-                print(f"Warning: Could not get run info: {e}")
+                print(f"Error fetching runs: {e}")
+        
+        # Fallback: open project page if no run selected or found
+        if not url:
+            if entity and project_name:
                 url = _get_project_url(ctx, project_name)
-
+            else:
+                url = DEFAULT_WANDB_URL
+        
         # Open W&B URL in new tab
         ctx.trigger(
             "@harpreetsahota/wandb/set_wandb_url",
