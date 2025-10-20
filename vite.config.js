@@ -44,6 +44,7 @@ module.exports = defineViteConfig({
       recoil: "recoil",
       "@fiftyone/state": "__fos__",
       "@fiftyone/operators": "__foo__",
+      "@fiftyone/plugins": "__fop__",
       "@fiftyone/components": "__foc__",
       "@fiftyone/utilities": "__fou__",
       "@mui/material": "__mui__", // use mui from fiftyone

@@ -1,86 +1,71 @@
-import mlflow
+"""
+Utility functions for W&B plugin.
+
+This file contains helper functions that can be imported and used
+independently of the plugin operators.
+"""
+
+import wandb
 
 
-def _format_run_name(run_name):
-    return run_name.replace("-", "_")
-
-
-def _initialize_fiftyone_run_for_mlflow_experiment(
-    dataset, experiment_name, tracking_uri=None
+def log_wandb_run_to_fiftyone_dataset(
+    sample_collection, project_name, run_id=None, run_name=None
 ):
     """
-    Initialize a new FiftyOne custom run given an MLflow experiment.
+    Log a W&B run to a FiftyOne dataset.
 
     Args:
-    - dataset: The FiftyOne `Dataset` used for the experiment
-    - experiment_name: The name of the MLflow experiment to create the run for
+        sample_collection: The FiftyOne `Dataset` or `DatasetView` 
+        project_name: The name of the W&B project
+        run_id: The W&B run ID (optional)
+        run_name: The W&B run name (optional)
     """
-    experiment = mlflow.get_experiment_by_name(experiment_name)
-    # tracking_uri = mlflow.get_tracking_uri()
-    tracking_uri = tracking_uri or "http://localhost:8080"
-
-    config = dataset.init_run()
-
-    config.method = "mlflow_experiment"
-    config.artifact_location = experiment.artifact_location
-    config.created_at = experiment.creation_time
-    config.experiment_name = experiment_name
-    config.experiment_id = experiment.experiment_id
-    config.tracking_uri = tracking_uri
-    config.tags = experiment.tags
-    config.runs = []
-    dataset.register_run(experiment_name, config)
+    import fiftyone.operators as foo
+    
+    # Get the operator and execute it
+    log_wandb_run = foo.get_operator("@harpreetsahota/wandb/log_wandb_run")
+    return log_wandb_run(
+        sample_collection,
+        project_name=project_name,
+        run_id=run_id,
+        run_name=run_name
+    )
 
 
-def _fiftyone_experiment_run_exists(dataset, experiment_name):
-    return experiment_name in dataset.list_runs()
-
-
-def _add_fiftyone_run_for_mlflow_run(dataset, experiment_name, run_id):
+def show_wandb_run_in_app(dataset):
     """
-    Add an MLflow run to a FiftyOne custom run.
-
+    Open the W&B panel in FiftyOne App.
+    
     Args:
-    - dataset: The FiftyOne `Dataset` used for the experiment
-    - run_id: The MLflow run_id to add
+        dataset: The FiftyOne dataset
     """
-    run = mlflow.get_run(run_id)
-    run_name = run.data.tags["mlflow.runName"]
-
-    config = dataset.init_run()
-    config.method = "mlflow_run"
-    config.run_name = run_name
-    config.run_id = run_id
-    config.run_uuid = run.info.run_uuid
-    config.experiment_id = run.info.experiment_id
-    config.artifact_uri = run.info.artifact_uri
-    config.metrics = run.data.metrics
-    config.tags = run.data.tags
-
-    dataset.register_run(_format_run_name(run_name), config)
-
-    ## add run to experiment
-    experiment_run_info = dataset.get_run_info(experiment_name)
-    experiment_run_info.config.runs.append(run_name)
-    dataset.update_run_config(experiment_name, experiment_run_info.config)
+    import fiftyone.operators as foo
+    
+    show_wandb_run = foo.get_operator("@harpreetsahota/wandb/show_wandb_run")
+    return show_wandb_run(dataset)
 
 
-def log_mlflow_run_to_fiftyone_dataset(
-    sample_collection, experiment_name, run_id=None
-):
+def get_wandb_run_info(dataset, run_key):
     """
-    Log an MLflow run to a FiftyOne custom run.
-
+    Get information about a W&B run stored in FiftyOne.
+    
     Args:
-    - sample_collection: The FiftyOne `Dataset` or `DatasetView` used for the experiment
-    - experiment_name: The name of the MLflow experiment to create the run for
-    - run_id: The MLflow run_id to add
+        dataset: The FiftyOne dataset
+        run_key: The run key in FiftyOne
+        
+    Returns:
+        dict: Run information
     """
-    dataset = sample_collection._dataset
-
-    if not _fiftyone_experiment_run_exists(dataset, experiment_name):
-        _initialize_fiftyone_run_for_mlflow_experiment(
-            dataset, experiment_name
-        )
-    if run_id:
-        _add_fiftyone_run_for_mlflow_run(dataset, experiment_name, run_id)
+    info = dataset.get_run_info(run_key)
+    
+    return {
+        "run_name": info.config.run_name,
+        "run_id": info.config.run_id,
+        "project": info.config.project,
+        "entity": info.config.entity,
+        "url": info.config.url,
+        "state": info.config.state,
+        "config": info.config.config_params,
+        "summary": info.config.summary_metrics,
+        "tags": info.config.tags,
+    }
