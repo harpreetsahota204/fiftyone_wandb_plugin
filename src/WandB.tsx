@@ -34,15 +34,17 @@ export default function WandBPanel() {
   const wandbUrl = useRecoilValue(wandbURLAtom);
   const reportMode = useRecoilValue(reportModeAtom);
   const setReportMode = useSetRecoilState(reportModeAtom);
-  const urlToOpen = wandbUrl || defaultUrl;
+  
+  // Memoize urlToOpen to prevent unnecessary recalculations
+  const urlToOpen = React.useMemo(() => wandbUrl || defaultUrl, [wandbUrl, defaultUrl]);
 
-  const handleOpenDashboard = () => {
+  const handleOpenDashboard = React.useCallback(() => {
     window.open(urlToOpen, "_blank", "noopener,noreferrer");
-  };
+  }, [urlToOpen]);
 
-  const handleCloseReport = () => {
+  const handleCloseReport = React.useCallback(() => {
     setReportMode(false);
-  };
+  }, [setReportMode]);
 
   // If in report mode, show iframe
   if (reportMode) {
@@ -78,6 +80,7 @@ export default function WandBPanel() {
           }}
         >
           <iframe
+            key={urlToOpen}
             style={{
               width: "100%",
               height: "100%",
