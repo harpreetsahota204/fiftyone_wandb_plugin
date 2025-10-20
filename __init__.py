@@ -427,51 +427,24 @@ class ShowWandBRun(foo.Operator):
                 )
                 return types.Property(inputs)
             
-            # Create dropdown of runs with detailed info
+            # Create dropdown of runs with summary metrics
             run_choices = types.DropdownView()
             for run in runs:
-                # Start with run name and state
-                label = f"{run.name} ({run.state})"
+                # Simple format: run name and raw summary_metrics
+                label = f"{run.name}"
                 
-                # Add summary metrics info if available
+                # Add summary metrics as raw string
                 try:
-                    summary = dict(run.summary)
-                    
-                    # Format timestamp if available
-                    if "_timestamp" in summary:
-                        from datetime import datetime
-                        timestamp = summary["_timestamp"]
-                        dt = datetime.fromtimestamp(timestamp)
-                        readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-                        label += f" | {readable_time}"
-                    
-                    # Add key metrics (excluding private/internal fields)
-                    metrics = {k: v for k, v in summary.items() 
-                              if not k.startswith("_") and isinstance(v, (int, float))}
-                    
-                    if metrics:
-                        # Show first 2 metrics to keep label concise
-                        metric_strs = [f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" 
-                                      for k, v in list(metrics.items())[:2]]
-                        if metric_strs:
-                            label += f" | {', '.join(metric_strs)}"
-                        
-                        # If there are more metrics, indicate that
-                        if len(metrics) > 2:
-                            label += f" (+{len(metrics)-2} more)"
-                    
-                    # Add _wandb info if available (can contain any arbitrary data)
-                    if "_wandb" in summary:
-                        wandb_data = summary["_wandb"]
-                        # Convert to string representation, handle any type
-                        wandb_str = str(wandb_data)
-                        # Truncate if too long
-                        if len(wandb_str) > 50:
-                            wandb_str = wandb_str[:50] + "..."
-                        label += f" | wandb: {wandb_str}"
-                    
+                    summary_metrics = run.summary_metrics
+                    if summary_metrics:
+                        # Convert to string and show it
+                        summary_str = str(summary_metrics)
+                        # Truncate if too long (250 chars to match report description)
+                        if len(summary_str) > 250:
+                            summary_str = summary_str[:250] + "..."
+                        label += f" | {summary_str}"
                 except Exception as e:
-                    # If we can't get summary, just use basic label
+                    # If we can't get summary, just use run name
                     pass
                 
                 run_choices.add_choice(label, label=label)
@@ -512,37 +485,16 @@ class ShowWandBRun(foo.Operator):
                 
                 # Find the run that matches the label (reconstruct same label format)
                 for run in runs:
-                    # Reconstruct the label with all details
-                    label = f"{run.name} ({run.state})"
+                    # Reconstruct simple label: run name + summary_metrics
+                    label = f"{run.name}"
                     
                     try:
-                        summary = dict(run.summary)
-                        
-                        if "_timestamp" in summary:
-                            from datetime import datetime
-                            timestamp = summary["_timestamp"]
-                            dt = datetime.fromtimestamp(timestamp)
-                            readable_time = dt.strftime("%Y-%m-%d %H:%M:%S")
-                            label += f" | {readable_time}"
-                        
-                        metrics = {k: v for k, v in summary.items() 
-                                  if not k.startswith("_") and isinstance(v, (int, float))}
-                        
-                        if metrics:
-                            metric_strs = [f"{k}={v:.4f}" if isinstance(v, float) else f"{k}={v}" 
-                                          for k, v in list(metrics.items())[:2]]
-                            if metric_strs:
-                                label += f" | {', '.join(metric_strs)}"
-                            
-                            if len(metrics) > 2:
-                                label += f" (+{len(metrics)-2} more)"
-                        
-                        if "_wandb" in summary:
-                            wandb_data = summary["_wandb"]
-                            wandb_str = str(wandb_data)
-                            if len(wandb_str) > 50:
-                                wandb_str = wandb_str[:50] + "..."
-                            label += f" | wandb: {wandb_str}"
+                        summary_metrics = run.summary_metrics
+                        if summary_metrics:
+                            summary_str = str(summary_metrics)
+                            if len(summary_str) > 250:
+                                summary_str = summary_str[:250] + "..."
+                            label += f" | {summary_str}"
                     except:
                         pass
                     
@@ -559,10 +511,16 @@ class ShowWandBRun(foo.Operator):
             else:
                 url = DEFAULT_WANDB_URL
         
-        # Open W&B URL in new tab
+        # Embed W&B run in iframe (runs CAN be embedded unlike main dashboard)
         ctx.trigger(
-            "@harpreetsahota/wandb/set_wandb_url",
+            "@harpreetsahota/wandb/embed_report",
             params=dict(url=url),
+        )
+        
+        # Open the panel
+        ctx.trigger(
+            "open_panel",
+            params=dict(name="WandBPanel", layout="horizontal", isActive=True),
         )
 
 
