@@ -349,11 +349,10 @@ class OpenWandBPanel(foo.Operator):
         )
 
     def execute(self, ctx):
+        # Open default W&B dashboard in new tab
         ctx.trigger(
-            "open_panel",
-            params=dict(
-                name="WandBPanel", isActive=True, layout="horizontal"
-            ),
+            "@harpreetsahota/wandb/set_wandb_url",
+            params=dict(url="https://wandb.ai"),
         )
 
 
@@ -449,15 +448,10 @@ class ShowWandBRun(foo.Operator):
                 print(f"Warning: Could not get run info: {e}")
                 url = _get_project_url(ctx, project_name)
 
-        # Open W&B URL in new tab and update state
+        # Open W&B URL in new tab
         ctx.trigger(
             "@harpreetsahota/wandb/set_wandb_url",
             params=dict(url=url),
-        )
-        # Still open the panel to show the W&B launcher
-        ctx.trigger(
-            "open_panel",
-            params=dict(name="WandBPanel", layout="horizontal"),
         )
 
 
