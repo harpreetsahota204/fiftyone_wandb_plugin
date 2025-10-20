@@ -1,0 +1,17 @@
+name: "@voxel51/wandb"
+description: Track model training experiments with Weights & Biases!
+version: 0.1.0
+fiftyone:
+  version: ">=0.23.0"
+license: Apache 2.0
+url: "https://github.com/voxel51/fiftyone-wandb-plugin"
+operators:
+  - open_wandb_panel
+  - get_wandb_run_info
+  - log_wandb_run
+  - set_iframe_url
+  - show_wandb_run
+secrets:
+  - WANDB_API_KEY
+  - WANDB_ENTITY
+  - WANDB_PROJECT
