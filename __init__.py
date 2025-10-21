@@ -935,6 +935,24 @@ class LogFiftyOneViewToWandB(foo.Operator):
             icon="/assets/wandb.svg",
         )
     
+    def __call__(
+        self,
+        sample_collection,
+        project,
+        run_id,
+        artifact_name=None,
+    ):
+        """Programmatic interface for logging FiftyOne views to WandB"""
+        dataset = sample_collection._dataset
+        view = sample_collection.view()
+        ctx = dict(view=view, dataset=dataset)
+        params = dict(
+            project=project,
+            run_id=run_id,
+            artifact_name=artifact_name,
+        )
+        return foo.execute_operator(self.uri, ctx, params=params)
+    
     def resolve_input(self, ctx):
         inputs = types.Object()
         
