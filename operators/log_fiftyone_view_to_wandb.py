@@ -290,6 +290,11 @@ def _log_fiftyone_view_to_wandb(ctx):
     else:
         metadata["is_subset_view"] = False
     
+    # Add sample IDs for easy view recreation
+    sample_ids = view.values("id")
+    metadata["sample_ids"] = sample_ids
+    metadata["num_samples"] = len(sample_ids)
+    
     artifact = wandb.Artifact(
         name=artifact_name,
         type="dataset",
