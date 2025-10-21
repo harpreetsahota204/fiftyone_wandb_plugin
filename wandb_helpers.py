@@ -109,6 +109,8 @@ def format_run_name(run_name):
 
 def serialize_view(view):
     """Serialize a FiftyOne view"""
+    # Import stage classes to ensure they're registered
+    import fiftyone.core.stages as fos
     return json.loads(json_util.dumps(view._serialize()))
 
 
@@ -171,7 +173,9 @@ def initialize_fiftyone_run_for_wandb_project(ctx, dataset, project_name):
     config.project_url = get_project_url(ctx, project_name)
     config.runs = []  # List of associated run IDs
     
-    dataset.register_run(project_name, config)
+    # Run keys must be valid Python variable names (no hyphens)
+    run_key = project_name.replace("-", "_").replace(" ", "_")
+    dataset.register_run(run_key, config)
 
 
 def add_fiftyone_run_for_wandb_run(ctx, dataset, project_name, run, **kwargs):
@@ -211,7 +215,9 @@ def add_fiftyone_run_for_wandb_run(ctx, dataset, project_name, run, **kwargs):
 
 def connect_dataset_to_project_if_necessary(ctx, dataset, project_name):
     """Initialize FiftyOne project if it doesn't exist"""
-    if project_name not in dataset.list_runs():
+    # Run keys must be valid Python variable names
+    run_key = project_name.replace("-", "_").replace(" ", "_")
+    if run_key not in dataset.list_runs():
         initialize_fiftyone_run_for_wandb_project(ctx, dataset, project_name)
 
 
