@@ -1,20 +1,30 @@
 name: "@harpreetsahota/wandb"
 description: Track model training experiments with Weights & Biases!
-version: 0.2.0
+version: 0.0.1
 fiftyone:
-  version: ">=0.23.0"
+  version: ">=1.0.0"
 license: Apache 2.0
 url: "https://github.com/harpreetsahota204/fiftyone_wandb_plugin"
+author: "Harpreet Sahota"
+
+# Python operators
 operators:
   - open_wandb_panel
   - get_wandb_run_info
   - log_wandb_run
-  - set_wandb_url
   - show_wandb_run
   - show_wandb_report
-  - embed_report
   - log_fiftyone_view_to_wandb
+
+# TypeScript/React panels
+panels:
+  - WandBPanel
+
 secrets:
   - FIFTYONE_WANDB_API_KEY
   - FIFTYONE_WANDB_ENTITY
   - FIFTYONE_WANDB_PROJECT
+
+dependencies:
+  - fiftyone
+  - wandb
