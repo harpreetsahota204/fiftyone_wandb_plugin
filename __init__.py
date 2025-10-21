@@ -7,6 +7,8 @@
 
 import json
 import os
+import tempfile
+from datetime import datetime
 from bson import json_util
 
 import fiftyone.operators as foo
@@ -764,6 +766,236 @@ class ShowWandBReport(foo.Operator):
         )
 
 
+def _extract_dataset_metadata(dataset, view=None):
+    """Extract metadata from FiftyOne dataset/view for WandB logging"""
+    import fiftyone as fo
+    
+    target = view if view is not None else dataset
+    
+    metadata = {
+        # Basic info
+        "fiftyone_dataset_name": dataset.name,
+        "fiftyone_dataset_size": len(dataset),
+        "fiftyone_view_size": len(target),
+        "fiftyone_version": fo.__version__,
+        "fiftyone_media_type": dataset.media_type,
+        
+        # Timestamps
+        "dataset_created_at": dataset.created_at.isoformat() if dataset.created_at else None,
+        "dataset_last_modified_at": dataset.last_modified_at.isoformat() if dataset.last_modified_at else None,
+        
+        # Custom info
+        "dataset_info": dict(dataset.info) if dataset.info else {},
+    }
+    
+    # Add tag-based splits (check all common variations)
+    all_tags = target.distinct("tags")
+    for split in ["train", "val", "test", "validation", "training", "testing"]:
+        if split in all_tags:
+            metadata[f"{split}_samples"] = len(target.match_tags(split))
+    
+    # Add default classes if present
+    if dataset.default_classes:
+        metadata["default_classes"] = dataset.default_classes
+    
+    # Add mask targets if present (for segmentation)
+    if hasattr(dataset, 'mask_targets') and dataset.mask_targets:
+        metadata["mask_targets"] = dict(dataset.mask_targets)
+    
+    # Special handling for video datasets
+    if dataset.media_type == "video":
+        frame_schema = dataset.get_frame_field_schema()
+        metadata["has_frame_fields"] = bool(frame_schema)
+        if frame_schema:
+            metadata["frame_fields"] = list(frame_schema.keys())
+    
+    return metadata
+
+
+def _log_fiftyone_view_to_wandb(ctx):
+    """Log FiftyOne view to WandB during training"""
+    if not WANDB_AVAILABLE:
+        raise ImportError("wandb is not installed. Install it with: pip install wandb")
+    
+    view = ctx.view
+    dataset = ctx.dataset
+    run_id = ctx.params.get("run_id")
+    project_name = ctx.params.get("project")
+    artifact_name = ctx.params.get("artifact_name", None)
+    
+    # Auto-generate artifact name if not provided
+    if not artifact_name:
+        artifact_name = f"training_view_{run_id[:8]}"
+    
+    # Extract metadata
+    metadata = _extract_dataset_metadata(dataset, view)
+    
+    # Add view serialization for reproducibility
+    is_subset = _is_subset_view(view)
+    if is_subset:
+        metadata["view_serialization"] = serialize_view(view)
+        metadata["is_subset_view"] = True
+    else:
+        metadata["is_subset_view"] = False
+    
+    metadata["is_training_view"] = True
+    
+    # Create WandB artifact
+    artifact = wandb.Artifact(
+        name=artifact_name,
+        type="dataset",
+        description=f"Training view for run {run_id}",
+        metadata=metadata
+    )
+    
+    # Collect sample references (lightweight - no images)
+    sample_refs = []
+    target = view if is_subset else dataset
+    
+    for sample in target.iter_samples(progress=True):
+        ref = {
+            "id": sample.id,
+            "filepath": sample.filepath,
+            "tags": sample.tags if sample.tags else [],
+        }
+        
+        # Add metadata if present
+        if sample.metadata:
+            ref["metadata"] = dict(sample.metadata)
+        
+        sample_refs.append(ref)
+    
+    # Write sample references to temp file and add to artifact
+    with tempfile.NamedTemporaryFile(mode='w', suffix='.json', delete=False) as f:
+        json.dump(sample_refs, f, indent=2)
+        temp_path = f.name
+    
+    try:
+        artifact.add_file(temp_path, name="sample_references.json")
+        
+        # Get entity for WandB URLs
+        entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
+        
+        # Link artifact to run and log it
+        with wandb.init(
+            project=project_name,
+            id=run_id,
+            resume="must",
+            entity=entity,
+        ) as active_run:
+            # Use the artifact (links it to this run)
+            active_run.use_artifact(artifact)
+            
+            # Also log key info to config for quick reference
+            active_run.config.update({
+                "fiftyone_view_artifact": f"{artifact_name}:latest",
+                "fiftyone_dataset_name": dataset.name,
+                "fiftyone_view_size": len(target),
+                "fiftyone_is_subset": is_subset,
+            })
+        
+        # Store training run info in FiftyOne using run system
+        run_config = dataset.init_run()
+        run_config.method = "wandb_training"
+        run_config.view_serialization = serialize_view(view) if is_subset else None
+        run_config.wandb_run_id = run_id
+        run_config.wandb_run_url = f"https://wandb.ai/{entity}/{project_name}/runs/{run_id}"
+        run_config.wandb_project = project_name
+        run_config.dataset_artifact = f"{artifact_name}:latest"
+        run_config.samples_used = len(target)
+        run_config.status = "running"
+        run_config.started_at = datetime.now().isoformat()
+        
+        # Register run in FiftyOne
+        run_key = f"training_{run_id}"
+        dataset.register_run(run_key, run_config)
+        
+        return {
+            "success": True,
+            "artifact_name": artifact_name,
+            "run_key": run_key,
+            "samples_logged": len(sample_refs),
+            "wandb_url": f"https://wandb.ai/{entity}/{project_name}/runs/{run_id}",
+        }
+    
+    finally:
+        # Clean up temp file
+        if os.path.exists(temp_path):
+            os.unlink(temp_path)
+
+
+class LogFiftyOneViewToWandB(foo.Operator):
+    @property
+    def config(self):
+        return foo.OperatorConfig(
+            name="log_fiftyone_view_to_wandb",
+            label="W&B: Log Training View",
+            description="Log FiftyOne view to WandB as training dataset artifact",
+            dynamic=True,
+            icon="/assets/wandb.svg",
+        )
+    
+    def resolve_input(self, ctx):
+        inputs = types.Object()
+        
+        # Check if in a view
+        is_view = _is_subset_view(ctx.view)
+        if not is_view:
+            inputs.view(
+                "warning",
+                types.Warning(
+                    label="Full Dataset Selected",
+                    description=f"You are logging the entire dataset ({len(ctx.dataset)} samples). "
+                               "Consider creating a filtered view for training.",
+                ),
+            )
+        else:
+            inputs.view(
+                "info",
+                types.Notice(
+                    label=f"Logging View with {len(ctx.view)} samples",
+                    description=f"This view will be saved as a WandB dataset artifact. "
+                               f"Total dataset has {len(ctx.dataset)} samples.",
+                ),
+            )
+        
+        # Project and run info
+        inputs.str(
+            "project",
+            label="W&B Project",
+            description="The W&B project name",
+            required=True,
+            default=ctx.secret("FIFTYONE_WANDB_PROJECT"),
+        )
+        
+        inputs.str(
+            "run_id",
+            label="W&B Run ID",
+            description="The ID of the current training run (from wandb.run.id)",
+            required=True,
+        )
+        
+        inputs.str(
+            "artifact_name",
+            label="Artifact Name (optional)",
+            description="Name for the dataset artifact. Auto-generated if not provided.",
+            required=False,
+        )
+        
+        return types.Property(inputs)
+    
+    def execute(self, ctx):
+        return _log_fiftyone_view_to_wandb(ctx)
+    
+    def resolve_output(self, ctx):
+        outputs = types.Object()
+        outputs.str("artifact_name", label="Artifact Name")
+        outputs.str("run_key", label="FiftyOne Run Key")
+        outputs.int("samples_logged", label="Samples Logged")
+        outputs.str("wandb_url", label="WandB Run URL")
+        return types.Property(outputs)
+
+
 def register(p):
     """Register all operators"""
     p.register(OpenWandBPanel)
@@ -771,3 +1003,5 @@ def register(p):
     p.register(LogWandBRun)
     p.register(ShowWandBRun)
     p.register(ShowWandBReport)
+    # Phase 1: Dataset Versioning & Lineage
+    p.register(LogFiftyOneViewToWandB)
