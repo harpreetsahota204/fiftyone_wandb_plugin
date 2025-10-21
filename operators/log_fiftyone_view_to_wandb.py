@@ -192,7 +192,7 @@ def _add_labels_table(artifact, view):
         
         # Add each label field
         for field in label_fields:
-            label = sample.get(field)
+            label = sample[field] if field in sample else None
             row.append(_format_label(label) if label else None)
         
         # Add image
@@ -242,7 +242,7 @@ def _add_embeddings(artifact, view, embedding_field):
     embeddings = []
     
     for sample in view.iter_samples(progress=True):
-        emb = sample.get(embedding_field)
+        emb = sample[embedding_field] if embedding_field in sample else None
         if emb is not None:
             sample_ids.append(sample.id)
             embeddings.append(emb)
