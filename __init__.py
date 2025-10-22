@@ -19,6 +19,7 @@ from .operators import (
     GetWandBRunInfo,
     ShowWandBReport,
     LogFiftyOneViewToWandB,
+    LogModelPredictions,
 )
 
 
@@ -30,3 +31,4 @@ def register(plugin):
     plugin.register(ShowWandBRun)
     plugin.register(ShowWandBReport)
     plugin.register(LogFiftyOneViewToWandB)
+    plugin.register(LogModelPredictions)

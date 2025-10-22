@@ -15,6 +15,7 @@ operators:
   - show_wandb_run
   - show_wandb_report
   - log_fiftyone_view_to_wandb
+  - log_model_predictions
 
 # TypeScript/React panels
 panels:

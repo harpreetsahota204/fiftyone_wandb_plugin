@@ -9,6 +9,7 @@ from .show_wandb_run import ShowWandBRun
 from .get_wandb_run_info import GetWandBRunInfo
 from .show_wandb_report import ShowWandBReport
 from .log_fiftyone_view_to_wandb import LogFiftyOneViewToWandB
+from .log_model_predictions import LogModelPredictions
 
 __all__ = [
     "LogWandBRun",
@@ -17,5 +18,6 @@ __all__ = [
     "GetWandBRunInfo",
     "ShowWandBReport",
     "LogFiftyOneViewToWandB",
+    "LogModelPredictions",
 ]
 
