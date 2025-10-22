@@ -7,6 +7,7 @@ as a dataset artifact during training, supporting all FiftyOne label types.
 import json
 import os
 import tempfile
+from collections import Counter
 from datetime import datetime
 
 import fiftyone as fo
@@ -67,8 +68,13 @@ def _format_label(label):
     if isinstance(label, fol.Detections):
         if not label.detections:
             return "0 detections"
-        labels_str = ", ".join(set(d.label for d in label.detections if d.label))
-        return f"{len(label.detections)} detections: {labels_str}"
+        
+        # Count each label type
+        label_counts = Counter(d.label for d in label.detections if d.label)
+        
+        # Format as "person(3), car(2), dog(1)"
+        counts_str = ", ".join(f"{label}({count})" for label, count in label_counts.most_common())
+        return f"{len(label.detections)} detections: {counts_str}"
     
     # Detection (single)
     if isinstance(label, fol.Detection):
@@ -85,8 +91,13 @@ def _format_label(label):
     if isinstance(label, fol.Polylines):
         if not label.polylines:
             return "0 polylines"
-        labels_str = ", ".join(set(p.label for p in label.polylines if p.label))
-        return f"{len(label.polylines)} polylines: {labels_str}"
+        
+        # Count each polyline type
+        label_counts = Counter(p.label for p in label.polylines if p.label)
+        
+        # Format as "road(2), sidewalk(1)"
+        counts_str = ", ".join(f"{label}({count})" for label, count in label_counts.most_common())
+        return f"{len(label.polylines)} polylines: {counts_str}"
     
     # Keypoint
     if isinstance(label, fol.Keypoint):
@@ -96,8 +107,13 @@ def _format_label(label):
     if isinstance(label, fol.Keypoints):
         if not label.keypoints:
             return "0 keypoints"
-        labels_str = ", ".join(set(k.label for k in label.keypoints if k.label))
-        return f"{len(label.keypoints)} keypoints: {labels_str}"
+        
+        # Count each keypoint type
+        label_counts = Counter(k.label for k in label.keypoints if k.label)
+        
+        # Format as "nose(1), left_eye(1), right_eye(1)"
+        counts_str = ", ".join(f"{label}({count})" for label, count in label_counts.most_common())
+        return f"{len(label.keypoints)} keypoints: {counts_str}"
     
     # Segmentation
     if isinstance(label, fol.Segmentation):
@@ -117,8 +133,13 @@ def _format_label(label):
     if isinstance(label, fol.TemporalDetections):
         if not label.detections:
             return "0 temporal detections"
-        labels_str = ", ".join(set(d.label for d in label.detections if d.label))
-        return f"{len(label.detections)} temporal detections: {labels_str}"
+        
+        # Count each temporal detection type
+        label_counts = Counter(d.label for d in label.detections if d.label)
+        
+        # Format as "action(2), speaking(1)"
+        counts_str = ", ".join(f"{label}({count})" for label, count in label_counts.most_common())
+        return f"{len(label.detections)} temporal detections: {counts_str}"
     
     # GeoLocation
     if isinstance(label, fol.GeoLocation):
