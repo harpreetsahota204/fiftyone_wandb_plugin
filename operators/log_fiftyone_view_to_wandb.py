@@ -317,7 +317,7 @@ def _log_fiftyone_view_to_wandb(ctx):
         artifact_name = re.sub(r'-+', '-', artifact_name)  # Remove multiple hyphens
         artifact_name = artifact_name.strip('-')  # Remove leading/trailing hyphens
     else:
-        artifact_name = f"training_view_{run_id[:8]}"
+        artifact_name = f"dataset_view_{run_id[:8]}"
     
     # 3. Create artifact
     metadata = extract_dataset_metadata(dataset, view)
@@ -376,7 +376,9 @@ def _log_fiftyone_view_to_wandb(ctx):
     if is_subset_view(view):
         run_config.view_serialization = serialize_view(view)
     
-    dataset.register_run(f"training_{run_id}", run_config)
+    # Run keys must be valid Python variable names (no hyphens, no special chars)
+    run_key = f"dataset_view_{run_id}".replace("-", "_").replace(".", "_")
+    dataset.register_run(run_key, run_config)
     
     return {
         "success": True,
@@ -453,7 +455,7 @@ class LogFiftyOneViewToWandB(foo.Operator):
         inputs.str("project", label="W&B Project", required=True, 
                    default=ctx.secret("FIFTYONE_WANDB_PROJECT"))
         inputs.str("run_id", label="W&B Run ID (optional)", required=False,
-                   description="From wandb.run.id in your training script. Auto-generated if not provided.")
+                   description="From wandb.run.id in your training script. Auto-generated if not provided. Use lowercase, numbers, hyphens, underscores only. No spaces or special chars.")
         inputs.str("artifact_name", label="Artifact Name (optional)", required=False,
                    description="Use lowercase, numbers, hyphens, underscores only. No spaces or special chars.")
         
