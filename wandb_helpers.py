@@ -192,7 +192,17 @@ def add_fiftyone_run_for_wandb_run(ctx, dataset, project_name, run, **kwargs):
     config.created_at = run.created_at
     config.url = run.url
     config.config_params = dict(run.config) if run.config else {}
-    config.summary_metrics = dict(run.summary) if run.summary else {}
+    
+    # Convert summary to dict properly (WandB summary has special __getitem__ behavior)
+    summary_dict = {}
+    if run.summary:
+        try:
+            # Access the internal dict
+            summary_dict = dict(run.summary._dict) if hasattr(run.summary, '_dict') else {}
+        except:
+            summary_dict = {}
+    config.summary_metrics = summary_dict
+    
     config.tags = list(run.tags) if run.tags else []
     config.notes = run.notes if hasattr(run, 'notes') else ""
     
@@ -206,9 +216,13 @@ def add_fiftyone_run_for_wandb_run(ctx, dataset, project_name, run, **kwargs):
     
     # Add run to project's run list
     try:
-        project_run_info = dataset.get_run_info(project_name)
+        # Use sanitized project key
+        project_key = project_name.replace("-", "_").replace(" ", "_")
+        project_run_info = dataset.get_run_info(project_key)
+        if not hasattr(project_run_info.config, 'runs') or project_run_info.config.runs is None:
+            project_run_info.config.runs = []
         project_run_info.config.runs.append(run.name)
-        dataset.update_run_config(project_name, project_run_info.config)
+        dataset.update_run_config(project_key, project_run_info.config)
     except Exception as e:
         print(f"Warning: Could not update project run list: {e}")
 
