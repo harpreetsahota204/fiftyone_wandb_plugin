@@ -297,7 +297,7 @@ def _log_fiftyone_view_to_wandb(ctx):
     _validate_inputs(ctx)
     
     # 2. Prepare
-    view = ctx.view
+    view = ctx.target_view()  # Use target_view to support selected samples
     dataset = ctx.dataset
     run_id = ctx.params.get("run_id")
     project_name = ctx.params.get("project")
@@ -419,8 +419,12 @@ class LogFiftyOneViewToWandB(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
+        # Add view target selector (Dataset, Current view, or Selected samples)
+        inputs.view_target(ctx)
+        
         # Warning about full dataset
-        if not is_subset_view(ctx.view):
+        target = ctx.target_view()
+        if not is_subset_view(target):
             inputs.view("warning", types.Warning(
                 label="Logging full dataset",
                 description=f"Consider creating a filtered view. Current: {len(ctx.dataset)} samples"
@@ -439,7 +443,7 @@ class LogFiftyOneViewToWandB(foo.Operator):
         
         # Show label fields that will be included
         if ctx.params.get("include_labels"):
-            label_fields = _get_label_fields(ctx.view)
+            label_fields = _get_label_fields(ctx.target_view())
             if label_fields:
                 inputs.view("label_info", types.Notice(
                     label=f"Will log {len(label_fields)} label fields",
@@ -465,7 +469,7 @@ class LogFiftyOneViewToWandB(foo.Operator):
     def resolve_delegation(self, ctx):
         """Delegate for large datasets with labels"""
         include_labels = ctx.params.get("include_labels", False)
-        return include_labels and len(ctx.view) > 1000
+        return include_labels and len(ctx.target_view()) > 1000
     
     def execute(self, ctx):
         return _log_fiftyone_view_to_wandb(ctx)
