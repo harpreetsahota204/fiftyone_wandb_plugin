@@ -230,11 +230,27 @@ def _create_predictions_table(view, pred_field, prompt_field=None, include_image
         sample_label_ids = _collect_label_ids(pred_label)
         all_label_ids.extend(sample_label_ids)
         
-        # Track low confidence labels (for active learning)
+        # Track low confidence labels (for active learning) - works for ALL label types
         if isinstance(pred_label, fol.Detections):
             for det in pred_label.detections:
                 if det.confidence and det.confidence < 0.5:
                     low_confidence_label_ids.append(det.id)
+        elif isinstance(pred_label, fol.Polylines):
+            for poly in pred_label.polylines:
+                if hasattr(poly, 'confidence') and poly.confidence and poly.confidence < 0.5:
+                    low_confidence_label_ids.append(poly.id)
+        elif isinstance(pred_label, fol.Keypoints):
+            for kp in pred_label.keypoints:
+                if hasattr(kp, 'confidence') and kp.confidence and kp.confidence < 0.5:
+                    low_confidence_label_ids.append(kp.id)
+        elif isinstance(pred_label, fol.TemporalDetections):
+            for det in pred_label.detections:
+                if det.confidence and det.confidence < 0.5:
+                    low_confidence_label_ids.append(det.id)
+        elif hasattr(pred_label, 'confidence') and hasattr(pred_label, 'id'):
+            # Single label types (Classification, Detection, Regression, etc.)
+            if pred_label.confidence and pred_label.confidence < 0.5:
+                low_confidence_label_ids.append(pred_label.id)
         
         row = [
             sample.id,
