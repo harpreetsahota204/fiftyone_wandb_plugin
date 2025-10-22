@@ -37,9 +37,9 @@ def _validate_inputs(ctx):
     if not WANDB_AVAILABLE:
         raise ImportError("wandb not installed. Run: pip install wandb")
     
-    for param in ["run_id", "project"]:
-        if not ctx.params.get(param):
-            raise ValueError(f"Missing required parameter: {param}")
+    # Only project is required (run_id is optional, will be auto-generated)
+    if not ctx.params.get("project"):
+        raise ValueError(f"Missing required parameter: project")
     
     for secret in ["FIFTYONE_WANDB_API_KEY", "FIFTYONE_WANDB_ENTITY"]:
         if not ctx.secret(secret):
@@ -299,9 +299,25 @@ def _log_fiftyone_view_to_wandb(ctx):
     # 2. Prepare
     view = ctx.target_view()  # Use target_view to support selected samples
     dataset = ctx.dataset
-    run_id = ctx.params.get("run_id")
     project_name = ctx.params.get("project")
-    artifact_name = ctx.params.get("artifact_name") or f"training_view_{run_id[:8]}"
+    run_id = ctx.params.get("run_id")
+    
+    # Auto-generate run_id if not provided (for UI usage)
+    if not run_id:
+        import uuid
+        run_id = f"fiftyone_{uuid.uuid4().hex[:8]}"
+    
+    # Get and sanitize artifact name
+    artifact_name = ctx.params.get("artifact_name")
+    if artifact_name:
+        # Sanitize: lowercase, replace spaces and invalid chars with hyphens
+        import re
+        artifact_name = artifact_name.lower()
+        artifact_name = re.sub(r'[^a-z0-9\-_.]', '-', artifact_name)
+        artifact_name = re.sub(r'-+', '-', artifact_name)  # Remove multiple hyphens
+        artifact_name = artifact_name.strip('-')  # Remove leading/trailing hyphens
+    else:
+        artifact_name = f"training_view_{run_id[:8]}"
     
     # 3. Create artifact
     metadata = extract_dataset_metadata(dataset, view)
@@ -337,7 +353,10 @@ def _log_fiftyone_view_to_wandb(ctx):
     
     # 5. Upload to WandB
     entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
-    with wandb.init(project=project_name, id=run_id, resume="must", entity=entity) as run:
+    
+    # Use resume="allow" to handle both existing and new runs
+    # If run exists, it resumes; if not, it creates new
+    with wandb.init(project=project_name, id=run_id, resume="allow", entity=entity) as run:
         run.log_artifact(artifact)
         run.config.update({
             "fiftyone_view_artifact": f"{artifact_name}:latest",
@@ -376,8 +395,8 @@ class LogFiftyOneViewToWandB(foo.Operator):
     def config(self):
         return foo.OperatorConfig(
             name="log_fiftyone_view_to_wandb",
-            label="W&B: Log Training View",
-            description="Log FiftyOne view to WandB as training dataset artifact",
+            label="W&B: Save View as Artifact",
+            description="Save FiftyOne view to WandB as dataset artifact",
             dynamic=True,
             icon="/assets/wandb.svg",
             execution_options=foo.ExecutionOptions(
@@ -433,9 +452,10 @@ class LogFiftyOneViewToWandB(foo.Operator):
         # Basic inputs
         inputs.str("project", label="W&B Project", required=True, 
                    default=ctx.secret("FIFTYONE_WANDB_PROJECT"))
-        inputs.str("run_id", label="W&B Run ID", required=True,
-                   description="From wandb.run.id in your training script")
-        inputs.str("artifact_name", label="Artifact Name (optional)", required=False)
+        inputs.str("run_id", label="W&B Run ID (optional)", required=False,
+                   description="From wandb.run.id in your training script. Auto-generated if not provided.")
+        inputs.str("artifact_name", label="Artifact Name (optional)", required=False,
+                   description="Use lowercase, numbers, hyphens, underscores only. No spaces or special chars.")
         
         # Label logging option
         inputs.bool("include_labels", label="Include Labels", default=False,
