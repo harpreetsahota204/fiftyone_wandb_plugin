@@ -32,7 +32,8 @@ class OpenWandBPanel(foo.Operator):
 
     def execute(self, ctx):
         # Use environment variables to construct URL
-        project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
+        import os
+        project_name = ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
         
         if project_name:
             url = get_project_url(ctx, project_name)

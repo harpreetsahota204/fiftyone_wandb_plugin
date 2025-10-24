@@ -32,8 +32,9 @@ class ShowWandBRun(foo.Operator):
         inputs = types.Object()
         
         # Get entity and project from environment
-        entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
-        project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
+        import os
+        entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+        project_name = ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
         
         if not entity or not project_name:
             inputs.view(
@@ -122,8 +123,9 @@ class ShowWandBRun(foo.Operator):
     def execute(self, ctx):
         # Get selected run label
         run_label = ctx.params.get("run_label", None)
-        entity = ctx.params.get("entity") or ctx.secret("FIFTYONE_WANDB_ENTITY")
-        project_name = ctx.params.get("project_name") or ctx.secret("FIFTYONE_WANDB_PROJECT")
+        import os
+        entity = ctx.params.get("entity") or ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+        project_name = ctx.params.get("project_name") or ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
         
         url = None
         

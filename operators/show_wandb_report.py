@@ -28,8 +28,9 @@ class ShowWandBReport(foo.Operator):
         inputs = types.Object()
         
         # Get entity and project from environment or user input
-        entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
-        project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
+        import os
+        entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+        project_name = ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
         
         if not entity or not project_name:
             inputs.view(
@@ -116,8 +117,9 @@ class ShowWandBReport(foo.Operator):
         
         if report_label:
             # Fetch reports again to find the URL matching the label
-            entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
-            project_name = ctx.secret("FIFTYONE_WANDB_PROJECT")
+            import os
+            entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+            project_name = ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
             
             if entity and project_name:
                 try:
@@ -141,8 +143,9 @@ class ShowWandBReport(foo.Operator):
         
         # Fallback if no report URL found
         if not report_url:
-            entity = ctx.params.get("entity") or ctx.secret("FIFTYONE_WANDB_ENTITY")
-            project_name = ctx.params.get("project_name") or ctx.secret("FIFTYONE_WANDB_PROJECT")
+            import os
+            entity = ctx.params.get("entity") or ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+            project_name = ctx.params.get("project_name") or ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
             
             if entity and project_name:
                 # Open the reports page for the project

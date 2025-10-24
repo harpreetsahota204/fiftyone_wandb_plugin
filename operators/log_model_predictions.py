@@ -556,14 +556,38 @@ class LogModelPredictions(foo.Operator):
                 required=True
             )
         
-        # WandB project
-        inputs.str(
-            "project",
-            label="W&B Project",
-            description="WandB project for logging predictions",
-            required=True,
-            default=ctx.secret("FIFTYONE_WANDB_PROJECT")
-        )
+        # WandB project with auto-complete from existing projects
+        entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
+        
+        # Try to get existing projects
+        project_choices = []
+        if entity and api_key and WANDB_AVAILABLE:
+            try:
+                wandb.login(key=api_key)
+                api = wandb.Api()
+                projects = api.projects(entity=entity)
+                project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+            except:
+                pass
+        
+        if project_choices:
+            inputs.str(
+                "project",
+                label="W&B Project",
+                description="Select existing project or type new name",
+                required=True,
+                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"),
+                view=types.AutocompleteView(choices=project_choices)
+            )
+        else:
+            inputs.str(
+                "project",
+                label="W&B Project",
+                description="WandB project for logging predictions",
+                required=True,
+                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT")
+            )
         
         # Artifact name (optional)
         inputs.str(
