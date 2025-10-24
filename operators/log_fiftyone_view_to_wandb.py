@@ -353,6 +353,11 @@ def _log_fiftyone_view_to_wandb(ctx):
     
     # 5. Upload to WandB
     entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
+    api_key = ctx.secret("FIFTYONE_WANDB_API_KEY")
+    
+    # Login to WandB first
+    if api_key:
+        wandb.login(key=api_key)
     
     # Use resume="allow" to handle both existing and new runs
     # If run exists, it resumes; if not, it creates new

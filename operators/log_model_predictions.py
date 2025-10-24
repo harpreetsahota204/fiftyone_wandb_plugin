@@ -387,6 +387,12 @@ def _log_model_predictions(ctx):
     
     # 7. Upload to WandB
     entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
+    api_key = ctx.secret("FIFTYONE_WANDB_API_KEY")
+    
+    # Login to WandB first
+    if api_key:
+        wandb.login(key=api_key)
+    
     run_id = f"predictions_{uuid.uuid4().hex[:8]}"
     
     with wandb.init(project=project_name, id=run_id, resume="allow", entity=entity) as run:
