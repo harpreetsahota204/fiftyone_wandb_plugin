@@ -669,6 +669,17 @@ class LogModelPredictions(foo.Operator):
         outputs.int("samples_processed", label="Samples Processed")
         outputs.int("total_predictions", label="Total Predictions")
         outputs.int("num_classes", label="Number of Classes")
-        outputs.str("wandb_url", label="WandB URL")
+        
+        # Make URL clickable with markdown link
+        wandb_url = ctx.params.get("wandb_url")
+        if wandb_url:
+            outputs.view(
+                "wandb_link",
+                types.Notice(
+                    label="WandB Predictions",
+                    description=f"[Open in WandB]({wandb_url})"
+                )
+            )
+        
         return types.Property(outputs)
 

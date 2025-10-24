@@ -536,6 +536,17 @@ class LogFiftyOneViewToWandB(foo.Operator):
         outputs = types.Object()
         outputs.str("artifact_name", label="Artifact Name")
         outputs.int("samples_logged", label="Samples Logged")
-        outputs.str("wandb_url", label="WandB Run URL")
+        
+        # Make URL clickable with markdown link
+        wandb_url = ctx.params.get("wandb_url")
+        if wandb_url:
+            outputs.view(
+                "wandb_link",
+                types.Notice(
+                    label="WandB Run",
+                    description=f"[Open in WandB]({wandb_url})"
+                )
+            )
+        
         return types.Property(outputs)
 
