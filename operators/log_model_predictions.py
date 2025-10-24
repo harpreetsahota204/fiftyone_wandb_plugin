@@ -41,9 +41,13 @@ def _validate_inputs(ctx):
     if not ctx.params.get("predictions_field"):
         raise ValueError("Missing required parameter: predictions_field")
     
+    # Check secrets with fallback to environment variables
     for secret in ["FIFTYONE_WANDB_API_KEY", "FIFTYONE_WANDB_ENTITY"]:
-        if not ctx.secret(secret):
-            raise ValueError(f"{secret} not set")
+        value = ctx.secrets.get(secret) or os.getenv(secret)
+        if not value:
+            raise ValueError(
+                f"{secret} not set. Set as environment variable: export {secret}='value'"
+            )
 
 
 # ============================================================================

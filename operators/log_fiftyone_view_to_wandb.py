@@ -41,9 +41,14 @@ def _validate_inputs(ctx):
     if not ctx.params.get("project"):
         raise ValueError(f"Missing required parameter: project")
     
+    # Check secrets with fallback to environment variables
+    import os
     for secret in ["FIFTYONE_WANDB_API_KEY", "FIFTYONE_WANDB_ENTITY"]:
-        if not ctx.secret(secret):
-            raise ValueError(f"{secret} not set")
+        value = ctx.secrets.get(secret) or os.getenv(secret)
+        if not value:
+            raise ValueError(
+                f"{secret} not set. Set as environment variable: export {secret}='value'"
+            )
 
 
 # ============================================================================
@@ -352,8 +357,9 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # 5. Upload to WandB
-    entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
-    api_key = ctx.secret("FIFTYONE_WANDB_API_KEY")
+    import os
+    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
     
     # Login to WandB first
     if api_key:
@@ -458,7 +464,7 @@ class LogFiftyOneViewToWandB(foo.Operator):
         
         # Basic inputs
         inputs.str("project", label="W&B Project", required=True, 
-                   default=ctx.secret("FIFTYONE_WANDB_PROJECT"))
+                   default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"))
         inputs.str("run_id", label="W&B Run ID (optional)", required=False,
                    description="From wandb.run.id in your training script. Auto-generated if not provided. Use lowercase, numbers, hyphens, underscores only. No spaces or special chars.")
         inputs.str("artifact_name", label="Artifact Name (optional)", required=False,
