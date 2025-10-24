@@ -31,61 +31,21 @@ class ShowWandBRun(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Get entity and API key from environment
+        # Get entity and project from secrets/env
         import os
         entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
-        
-        if not entity:
-            inputs.view(
-                "warning",
-                types.Warning(
-                    label="Entity Required",
-                    description="Please set FIFTYONE_WANDB_ENTITY environment variable.",
-                ),
-            )
-            inputs.str(
-                "entity",
-                label="W&B Entity",
-                description="Your W&B username or team name",
-                required=True,
-            )
-            return types.Property(inputs)
-        
-        # Auto-complete projects from WandB
-        project_choices = []
-        if entity and api_key:
-            try:
-                import wandb
-                wandb.login(key=api_key)
-                api = wandb.Api()
-                projects = api.projects(entity=entity)
-                project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
-            except:
-                pass
-        
-        # Project selector (auto-complete or manual)
-        if project_choices:
-            inputs.str(
-                "project_name",
-                label="W&B Project",
-                description="Select existing project",
-                required=True,
-                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT"),
-                view=types.AutocompleteView(choices=project_choices)
-            )
-        else:
-            inputs.str(
-                "project_name",
-                label="W&B Project",
-                description="The W&B project name",
-                required=True,
-                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
-            )
-        
-        # Get project name to fetch runs
         project_name = ctx.params.get("project_name") or ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
         
+        # Simple project input
+        inputs.str(
+            "project_name",
+            label="W&B Project",
+            description="The W&B project name",
+            required=True,
+            default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT")
+        )
+        
+        # If no project yet, return early
         if not project_name:
             return types.Property(inputs)
         
