@@ -24,10 +24,11 @@ DEFAULT_WANDB_URL = "https://wandb.ai"
 
 def get_wandb_config(ctx):
     """Get W&B configuration from secrets with fallbacks"""
+    import os
     config = {
-        "api_key": ctx.secret("FIFTYONE_WANDB_API_KEY"),
-        "entity": ctx.secret("FIFTYONE_WANDB_ENTITY"),
-        "project": ctx.secret("FIFTYONE_WANDB_PROJECT"),
+        "api_key": ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY"),
+        "entity": ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY"),
+        "project": ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT"),
     }
     return config
 
@@ -37,7 +38,8 @@ def ensure_wandb_login(ctx):
     if not WANDB_AVAILABLE:
         raise ImportError("wandb is not installed. Install it with: pip install wandb")
     
-    api_key = ctx.secret("FIFTYONE_WANDB_API_KEY")
+    import os
+    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
     if api_key:
         wandb.login(key=api_key)
     # If no API key, wandb will use cached login or prompt

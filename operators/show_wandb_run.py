@@ -31,35 +31,62 @@ class ShowWandBRun(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Get entity and project from environment
+        # Get entity and API key from environment
         import os
         entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        project_name = ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
         
-        if not entity or not project_name:
+        if not entity:
             inputs.view(
                 "warning",
                 types.Warning(
-                    label="Configuration Required",
-                    description="Please set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_PROJECT "
-                               "environment variables.",
+                    label="Entity Required",
+                    description="Please set FIFTYONE_WANDB_ENTITY environment variable.",
                 ),
             )
-            # Allow manual input as fallback
-            if not entity:
-                inputs.str(
-                    "entity",
-                    label="W&B Entity",
-                    description="Your W&B username or team name",
-                    required=True,
-                )
-            if not project_name:
-                inputs.str(
-                    "project_name",
-                    label="W&B Project",
-                    description="The W&B project name",
-                    required=True,
-                )
+            inputs.str(
+                "entity",
+                label="W&B Entity",
+                description="Your W&B username or team name",
+                required=True,
+            )
+            return types.Property(inputs)
+        
+        # Auto-complete projects from WandB
+        project_choices = []
+        if entity and api_key:
+            try:
+                import wandb
+                wandb.login(key=api_key)
+                api = wandb.Api()
+                projects = api.projects(entity=entity)
+                project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+            except:
+                pass
+        
+        # Project selector (auto-complete or manual)
+        if project_choices:
+            inputs.str(
+                "project_name",
+                label="W&B Project",
+                description="Select existing project",
+                required=True,
+                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT"),
+                view=types.AutocompleteView(choices=project_choices)
+            )
+        else:
+            inputs.str(
+                "project_name",
+                label="W&B Project",
+                description="The W&B project name",
+                required=True,
+                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+            )
+        
+        # Get project name to fetch runs
+        project_name = ctx.params.get("project_name") or ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+        
+        if not project_name:
             return types.Property(inputs)
         
         # Fetch runs from W&B API

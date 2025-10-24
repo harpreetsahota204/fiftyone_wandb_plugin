@@ -54,11 +54,15 @@ class GetWandBRunInfo(foo.Operator):
         )
 
         dataset = ctx.dataset
-        run_keys = [
-            r
-            for r in dataset.list_runs()
-            if dataset.get_run_info(r).config.method == "wandb_run"
-        ]
+        run_keys = []
+        for r in dataset.list_runs():
+            try:
+                run_info = dataset.get_run_info(r)
+                if hasattr(run_info.config, 'method') and run_info.config.method == "wandb_run":
+                    run_keys.append(r)
+            except Exception:
+                # Skip runs that can't be deserialized
+                continue
 
         if len(run_keys) == 0:
             inputs.view(
