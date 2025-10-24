@@ -31,21 +31,33 @@ class ShowWandBRun(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Get entity and project from secrets/env
+        # Get credentials
         import os
+        import wandb
         entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        project_name = ctx.params.get("project_name") or ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
         
-        # Simple project input
-        inputs.str(
-            "project_name",
-            label="W&B Project",
-            description="The W&B project name",
-            required=True,
-            default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT")
-        )
+        # Fetch and show projects dropdown
+        if entity and api_key:
+            wandb.login(key=api_key)
+            api = wandb.Api()
+            projects = list(api.projects(entity=entity))
+            project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+            
+            inputs.enum(
+                "project_name",
+                [c.value for c in project_choices],
+                label="W&B Project",
+                required=True,
+                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"),
+                view=types.DropdownView()
+            )
+        else:
+            inputs.str("project_name", label="W&B Project", required=True)
+            return types.Property(inputs)
         
-        # If no project yet, return early
+        # Get selected project
+        project_name = ctx.params.get("project_name")
         if not project_name:
             return types.Property(inputs)
         

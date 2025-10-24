@@ -27,35 +27,34 @@ class ShowWandBReport(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Get entity and project from environment or user input
+        # Get credentials
         import os
+        import wandb
         entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        project_name = ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
         
-        if not entity or not project_name:
-            inputs.view(
-                "warning",
-                types.Warning(
-                    label="Configuration Required",
-                    description="Please set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_PROJECT "
-                               "environment variables to list reports.",
-                ),
+        # Fetch and show projects dropdown
+        if entity and api_key:
+            wandb.login(key=api_key)
+            api = wandb.Api()
+            projects = list(api.projects(entity=entity))
+            project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+            
+            inputs.enum(
+                "project_name",
+                [c.value for c in project_choices],
+                label="W&B Project",
+                required=True,
+                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"),
+                view=types.DropdownView()
             )
-            # Allow manual input
-            if not entity:
-                inputs.str(
-                    "entity",
-                    label="W&B Entity",
-                    description="Your W&B username or team name",
-                    required=True,
-                )
-            if not project_name:
-                inputs.str(
-                    "project_name",
-                    label="W&B Project",
-                    description="The W&B project name",
-                    required=True,
-                )
+        else:
+            inputs.str("project_name", label="W&B Project", required=True)
+            return types.Property(inputs)
+        
+        # Get selected project
+        project_name = ctx.params.get("project_name")
+        if not project_name:
             return types.Property(inputs)
         
         # Fetch available reports
