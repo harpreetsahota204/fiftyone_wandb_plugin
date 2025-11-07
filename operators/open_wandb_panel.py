@@ -6,7 +6,7 @@ This operator opens the W&B panel in the FiftyOne App.
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
-from ..wandb_helpers import DEFAULT_WANDB_URL, get_project_url
+from ..wandb_helpers import DEFAULT_WANDB_URL, get_credentials, get_project_url
 
 
 class OpenWandBPanel(foo.Operator):
@@ -31,9 +31,8 @@ class OpenWandBPanel(foo.Operator):
         )
 
     def execute(self, ctx):
-        # Use environment variables to construct URL
-        import os
-        project_name = ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+        # Use credentials to construct URL
+        _, _, project_name = get_credentials(ctx)
         
         if project_name:
             url = get_project_url(ctx, project_name)

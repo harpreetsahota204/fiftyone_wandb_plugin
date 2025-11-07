@@ -9,8 +9,10 @@ import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
     DEFAULT_WANDB_URL,
+    get_credentials,
     get_wandb_api,
     get_project_url,
+    WANDB_AVAILABLE,
 )
 
 
@@ -32,15 +34,20 @@ class ShowWandBRun(foo.Operator):
         inputs = types.Object()
         
         # Get credentials
-        import os
-        import wandb
-        entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
+        entity, api_key, project = get_credentials(ctx)
         
         # Fetch and show projects dropdown
-        if entity and api_key:
-            wandb.login(key=api_key)
-            api = wandb.Api()
+        if entity and api_key and WANDB_AVAILABLE:
+            # Get authenticated API (handles login once)
+            try:
+                api = get_wandb_api(ctx)
+            except (ImportError, ValueError) as e:
+                inputs.view("error", types.Error(
+                    label="Configuration Error",
+                    description=str(e)
+                ))
+                return types.Property(inputs)
+            
             projects = list(api.projects(entity=entity))
             project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
             
@@ -49,7 +56,7 @@ class ShowWandBRun(foo.Operator):
                 [c.value for c in project_choices],
                 label="W&B Project",
                 required=True,
-                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"),
+                default=project,
                 view=types.DropdownView()
             )
         else:
@@ -61,9 +68,8 @@ class ShowWandBRun(foo.Operator):
         if not project_name:
             return types.Property(inputs)
         
-        # Fetch runs from W&B API
+        # Fetch runs from W&B API (reuse API client from above)
         try:
-            api = get_wandb_api(ctx)
             runs = list(api.runs(path=f"{entity}/{project_name}", per_page=100))
             
             if len(runs) == 0:
@@ -122,9 +128,9 @@ class ShowWandBRun(foo.Operator):
     def execute(self, ctx):
         # Get selected run label
         run_label = ctx.params.get("run_label", None)
-        import os
-        entity = ctx.params.get("entity") or ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        project_name = ctx.params.get("project_name") or ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+        entity, _, project = get_credentials(ctx)
+        entity = ctx.params.get("entity") or entity
+        project_name = ctx.params.get("project_name") or project
         
         url = None
         

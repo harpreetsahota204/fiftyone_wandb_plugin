@@ -4,8 +4,6 @@ This operator recreates a FiftyOne view from a WandB dataset artifact,
 enabling reproducibility and experiment tracking.
 """
 
-import os
-
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
@@ -17,17 +15,56 @@ except ImportError:
     wandb = None
 
 
-def _validate_inputs(ctx):
-    """Validate inputs upfront"""
+def _get_credentials(ctx):
+    """Get W&B credentials from context.
+    
+    Returns:
+        tuple: (entity, api_key) where either value may be None
+    """
+    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
+    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
+    return entity, api_key
+
+
+def _get_wandb_api(ctx):
+    """Get authenticated W&B API client.
+    
+    Handles login once and returns API client.
+    
+    Args:
+        ctx: Operator execution context
+        
+    Returns:
+        wandb.Api: Authenticated API client
+        
+    Raises:
+        ImportError: If wandb is not installed
+        ValueError: If required credentials are missing
+    """
     if not WANDB_AVAILABLE:
         raise ImportError("wandb not installed. Run: pip install wandb")
     
-    # Only validate required fields (project and artifact must be selected in UI flow)
-    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-    if not entity:
-        raise ValueError("FIFTYONE_WANDB_ENTITY not set")
+    entity, api_key = _get_credentials(ctx)
     
-    # These will be set through the dynamic UI
+    if not entity:
+        raise ValueError("FIFTYONE_WANDB_ENTITY not set in secrets")
+    
+    # Login only if API key is provided
+    if api_key:
+        wandb.login(key=api_key, relogin=False)
+    
+    return wandb.Api()
+
+
+def _validate_execution_params(ctx):
+    """Validate parameters before execution.
+    
+    Args:
+        ctx: Operator execution context
+        
+    Raises:
+        ValueError: If required parameters are missing
+    """
     if not ctx.params.get("project"):
         raise ValueError("Missing required parameter: project")
     
@@ -38,25 +75,20 @@ def _validate_inputs(ctx):
 def _load_view_from_wandb(ctx):
     """Load view from WandB artifact"""
     
-    # Validate only when executing (not during resolve_input)
-    if not ctx.params.get("project") or not ctx.params.get("artifact"):
-        raise ValueError("Please select both project and artifact")
+    # Validate parameters
+    _validate_execution_params(ctx)
     
-    _validate_inputs(ctx)
+    # Get authenticated API client (handles validation and login)
+    api = _get_wandb_api(ctx)
+    entity, _ = _get_credentials(ctx)
     
     # Get parameters
-    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
     project = ctx.params.get("project")
     artifact_name = ctx.params.get("artifact")
     action = ctx.params.get("action", "apply_to_session")
     view_name = ctx.params.get("view_name")
     
-    # Login and fetch artifact
-    if api_key:
-        wandb.login(key=api_key)
-    
-    api = wandb.Api()
+    # Fetch artifact
     artifact = api.artifact(f"{entity}/{project}/{artifact_name}")
     
     # Get sample IDs from metadata
@@ -97,13 +129,20 @@ class LoadViewFromWandB(foo.Operator):
         inputs = types.Object()
         
         # Get credentials
-        entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
+        entity, api_key = _get_credentials(ctx)
         
         # Project selector
         if entity and api_key:
-            wandb.login(key=api_key)
-            api = wandb.Api()
+            # Get authenticated API (handles login once)
+            try:
+                api = _get_wandb_api(ctx)
+            except (ImportError, ValueError) as e:
+                inputs.view("error", types.Error(
+                    label="Configuration Error",
+                    description=str(e)
+                ))
+                return types.Property(inputs)
+            
             projects = list(api.projects(entity=entity))
             project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
             
@@ -122,7 +161,7 @@ class LoadViewFromWandB(foo.Operator):
         # Artifact selector (dataset artifacts only)  
         project = ctx.params.get("project")
         if project:
-            # Fetch artifacts from runs
+            # Reuse the API client from above (already authenticated)
             runs = api.runs(path=f"{entity}/{project}")
             artifact_names = set()
             
@@ -158,7 +197,7 @@ class LoadViewFromWandB(foo.Operator):
         # Show artifact info
         artifact_name = ctx.params.get("artifact")
         if artifact_name:
-            # Correct format: entity/project/artifactName:version
+            # Reuse the API client (already authenticated)
             full_artifact_path = f"{entity}/{project}/{artifact_name}"
             artifact = api.artifact(full_artifact_path)
             num_samples = artifact.metadata.get("num_samples", 0)

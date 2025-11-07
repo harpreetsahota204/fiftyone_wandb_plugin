@@ -7,7 +7,12 @@ allowing users to view custom reports without leaving FiftyOne.
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
-from ..wandb_helpers import DEFAULT_WANDB_URL, get_wandb_api
+from ..wandb_helpers import (
+    DEFAULT_WANDB_URL,
+    get_credentials,
+    get_wandb_api,
+    WANDB_AVAILABLE,
+)
 
 
 class ShowWandBReport(foo.Operator):
@@ -28,15 +33,20 @@ class ShowWandBReport(foo.Operator):
         inputs = types.Object()
         
         # Get credentials
-        import os
-        import wandb
-        entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
+        entity, api_key, project = get_credentials(ctx)
         
         # Fetch and show projects dropdown
-        if entity and api_key:
-            wandb.login(key=api_key)
-            api = wandb.Api()
+        if entity and api_key and WANDB_AVAILABLE:
+            # Get authenticated API (handles login once)
+            try:
+                api = get_wandb_api(ctx)
+            except (ImportError, ValueError) as e:
+                inputs.view("error", types.Error(
+                    label="Configuration Error",
+                    description=str(e)
+                ))
+                return types.Property(inputs)
+            
             projects = list(api.projects(entity=entity))
             project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
             
@@ -45,7 +55,7 @@ class ShowWandBReport(foo.Operator):
                 [c.value for c in project_choices],
                 label="W&B Project",
                 required=True,
-                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"),
+                default=project,
                 view=types.DropdownView()
             )
         else:
@@ -57,9 +67,8 @@ class ShowWandBReport(foo.Operator):
         if not project_name:
             return types.Property(inputs)
         
-        # Fetch available reports
+        # Fetch available reports (reuse API client from above)
         try:
-            api = get_wandb_api(ctx)
             reports = list(api.reports(path=f"{entity}/{project_name}", per_page=100))
             
             if len(reports) == 0:
@@ -116,9 +125,8 @@ class ShowWandBReport(foo.Operator):
         
         if report_label:
             # Fetch reports again to find the URL matching the label
-            import os
-            entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-            project_name = ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+            entity, _, project = get_credentials(ctx)
+            project_name = project
             
             if entity and project_name:
                 try:
@@ -142,9 +150,9 @@ class ShowWandBReport(foo.Operator):
         
         # Fallback if no report URL found
         if not report_url:
-            import os
-            entity = ctx.params.get("entity") or ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-            project_name = ctx.params.get("project_name") or ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT")
+            entity, _, project = get_credentials(ctx)
+            entity = ctx.params.get("entity") or entity
+            project_name = ctx.params.get("project_name") or project
             
             if entity and project_name:
                 # Open the reports page for the project

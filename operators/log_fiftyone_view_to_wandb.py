@@ -29,26 +29,67 @@ except ImportError:
 
 
 # ============================================================================
-# VALIDATION
+# CREDENTIAL & API HELPERS
 # ============================================================================
 
-def _validate_inputs(ctx):
-    """Validate inputs upfront - fail fast"""
+def _get_credentials(ctx):
+    """Get W&B credentials from context.
+    
+    Returns:
+        tuple: (entity, api_key) where either value may be None
+    """
+    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
+    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
+    return entity, api_key
+
+
+def _get_wandb_api(ctx):
+    """Get authenticated W&B API client.
+    
+    Handles login once and returns API client.
+    
+    Args:
+        ctx: Operator execution context
+        
+    Returns:
+        wandb.Api: Authenticated API client
+        
+    Raises:
+        ImportError: If wandb is not installed
+        ValueError: If required credentials are missing
+    """
     if not WANDB_AVAILABLE:
         raise ImportError("wandb not installed. Run: pip install wandb")
     
-    # Only project is required (run_id is optional, will be auto-generated)
-    if not ctx.params.get("project"):
-        raise ValueError(f"Missing required parameter: project")
+    entity, api_key = _get_credentials(ctx)
     
-    # Check secrets with fallback to environment variables
-    import os
-    for secret in ["FIFTYONE_WANDB_API_KEY", "FIFTYONE_WANDB_ENTITY"]:
-        value = ctx.secrets.get(secret) or os.getenv(secret)
-        if not value:
-            raise ValueError(
-                f"{secret} not set. Set as environment variable: export {secret}='value'"
-            )
+    if not entity:
+        raise ValueError("FIFTYONE_WANDB_ENTITY not set in secrets")
+    
+    if not api_key:
+        raise ValueError("FIFTYONE_WANDB_API_KEY not set in secrets")
+    
+    # Login only once with relogin=False
+    wandb.login(key=api_key, relogin=False)
+    
+    return wandb.Api()
+
+
+# ============================================================================
+# VALIDATION
+# ============================================================================
+
+def _validate_execution_params(ctx):
+    """Validate parameters before execution.
+    
+    Args:
+        ctx: Operator execution context
+        
+    Raises:
+        ValueError: If required parameters are missing
+    """
+    if not ctx.params.get("project"):
+        raise ValueError("Missing required parameter: project")
 
 
 # ============================================================================
@@ -298,8 +339,15 @@ def _add_embeddings(artifact, view, embedding_field):
 def _log_fiftyone_view_to_wandb(ctx):
     """Log FiftyOne view to WandB with comprehensive label support"""
     
-    # 1. Validate
-    _validate_inputs(ctx)
+    # 1. Validate parameters and get credentials
+    _validate_execution_params(ctx)
+    entity, api_key = _get_credentials(ctx)
+    
+    if not entity:
+        raise ValueError("FIFTYONE_WANDB_ENTITY not set in secrets")
+    
+    if not api_key:
+        raise ValueError("FIFTYONE_WANDB_API_KEY not set in secrets")
     
     # 2. Prepare
     view = ctx.target_view()  # Use target_view to support selected samples
@@ -357,13 +405,8 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # 5. Upload to WandB
-    import os
-    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
-    
-    # Login to WandB first
-    if api_key:
-        wandb.login(key=api_key)
+    # Login to WandB (credentials already validated above)
+    wandb.login(key=api_key, relogin=False)
     
     # Use resume="allow" to handle both existing and new runs
     # If run exists, it resumes; if not, it creates new
@@ -435,14 +478,24 @@ class LogFiftyOneViewToWandB(foo.Operator):
                 self.view = view
                 self.dataset = dataset
                 self.params = params
+                # Cache secrets on initialization
+                self._secrets = {
+                    "FIFTYONE_WANDB_API_KEY": os.getenv("FIFTYONE_WANDB_API_KEY"),
+                    "FIFTYONE_WANDB_ENTITY": os.getenv("FIFTYONE_WANDB_ENTITY"),
+                    "FIFTYONE_WANDB_PROJECT": os.getenv("FIFTYONE_WANDB_PROJECT"),
+                }
             
             @property
             def secrets(self):
-                # Return a dict-like object that falls back to os.environ
+                # Return dict-like object with cached values
                 class SecretsDict(dict):
+                    def __init__(self, secrets):
+                        super().__init__(secrets)
+                    
                     def get(self, key, default=None):
-                        return os.getenv(key, default)
-                return SecretsDict()
+                        return super().get(key, default)
+                
+                return SecretsDict(self._secrets)
             
             def target_view(self):
                 return self.view
@@ -471,13 +524,19 @@ class LogFiftyOneViewToWandB(foo.Operator):
             ))
         
         # Project dropdown
-        import os
-        entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
+        entity, api_key = _get_credentials(ctx)
         
         if entity and api_key and WANDB_AVAILABLE:
-            wandb.login(key=api_key)
-            api = wandb.Api()
+            # Get authenticated API (handles login once)
+            try:
+                api = _get_wandb_api(ctx)
+            except (ImportError, ValueError) as e:
+                inputs.view("error", types.Error(
+                    label="Configuration Error",
+                    description=str(e)
+                ))
+                return types.Property(inputs)
+            
             projects = list(api.projects(entity=entity))
             project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
             
