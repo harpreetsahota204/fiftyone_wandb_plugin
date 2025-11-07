@@ -122,20 +122,20 @@ class LoadViewFromWandB(foo.Operator):
         # Artifact selector (dataset artifacts only)
         project = ctx.params.get("project")
         if project:
-            # Get artifacts using the collection API
-            artifact_collection = api.artifact_type(type_name="dataset", project=f"{entity}/{project}")
-            artifacts = list(artifact_collection.collections())
+            # Fetch artifacts using runs - each run that logged an artifact
+            runs = api.runs(path=f"{entity}/{project}")
+            artifact_set = set()
             
-            artifact_choices = []
-            for collection in artifacts:
-                # Get latest version
-                versions = list(collection.versions())
-                if versions:
-                    latest = versions[0]
-                    artifact_choices.append(
-                        types.Choice(label=f"{collection.name}:{latest.version}", 
-                                   value=f"{collection.name}:{latest.version}")
-                    )
+            for run in runs:
+                # Get artifacts logged by this run
+                for artifact in run.logged_artifacts():
+                    if artifact.type == "dataset":
+                        artifact_set.add(f"{artifact.name}:{artifact.version}")
+            
+            artifact_choices = [
+                types.Choice(label=name, value=name)
+                for name in sorted(artifact_set)
+            ]
             
             if artifact_choices:
                 inputs.enum(
