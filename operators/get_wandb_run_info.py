@@ -7,6 +7,10 @@ stored in the FiftyOne dataset.
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
+from ..wandb_helpers import (
+    prompt_for_missing_credentials,
+)
+
 
 def _initialize_run_output():
     """Initialize output schema for run info"""
@@ -48,6 +52,11 @@ class GetWandBRunInfo(foo.Operator):
 
     def resolve_input(self, ctx):
         inputs = types.Object()
+        
+        # Prompt for credentials if missing - all validation happens here
+        if not prompt_for_missing_credentials(ctx, inputs):
+            return types.Property(inputs)
+        
         form_view = types.View(
             label="W&B: choose run",
             description="Get information about a W&B run",

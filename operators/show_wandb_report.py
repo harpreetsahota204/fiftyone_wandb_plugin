@@ -37,35 +37,30 @@ class ShowWandBReport(foo.Operator):
         if not prompt_for_missing_credentials(ctx, inputs):
             return types.Property(inputs)
         
-        # Get credentials
+        # Get credentials and API
         entity, _, project = get_credentials(ctx)
         
-        # Fetch and show projects dropdown
-        if entity and WANDB_AVAILABLE:
-            # Get authenticated API (handles login once)
-            try:
-                api = get_wandb_api(ctx)
-            except (ImportError, ValueError) as e:
-                inputs.view("error", types.Error(
-                    label="Configuration Error",
-                    description=str(e)
-                ))
-                return types.Property(inputs)
-            
-            projects = list(api.projects(entity=entity))
-            project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
-            
-            inputs.enum(
-                "project_name",
-                [c.value for c in project_choices],
-                label="W&B Project",
-                required=True,
-                default=project,
-                view=types.DropdownView()
-            )
-        else:
-            inputs.str("project_name", label="W&B Project", required=True)
+        try:
+            api = get_wandb_api(ctx)
+        except (ImportError, ValueError) as e:
+            inputs.view("error", types.Error(
+                label="Configuration Error",
+                description=str(e)
+            ))
             return types.Property(inputs)
+        
+        # Fetch projects from W&B
+        projects = list(api.projects(entity=entity))
+        project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+        
+        inputs.enum(
+            "project_name",
+            [c.value for c in project_choices],
+            label="W&B Project",
+            required=True,
+            default=project,
+            view=types.DropdownView()
+        )
         
         # Get selected project
         project_name = ctx.params.get("project_name")
