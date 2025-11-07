@@ -561,14 +561,32 @@ class LogModelPredictions(foo.Operator):
                 required=True
             )
         
-        # WandB project
-        inputs.str(
-            "project",
-            label="W&B Project",
-            description="WandB project for logging predictions",
-            required=True,
-            default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT")
-        )
+        # WandB project dropdown
+        entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+        api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
+        
+        if entity and api_key and WANDB_AVAILABLE:
+            wandb.login(key=api_key)
+            api = wandb.Api()
+            projects = list(api.projects(entity=entity))
+            project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+            
+            inputs.enum(
+                "project",
+                [c.value for c in project_choices],
+                label="W&B Project",
+                required=True,
+                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"),
+                view=types.DropdownView()
+            )
+        else:
+            inputs.str(
+                "project",
+                label="W&B Project",
+                description="WandB project for logging predictions",
+                required=True,
+                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT")
+            )
         
         # Artifact name (optional)
         inputs.str(

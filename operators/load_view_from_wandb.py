@@ -22,22 +22,26 @@ def _validate_inputs(ctx):
     if not WANDB_AVAILABLE:
         raise ImportError("wandb not installed. Run: pip install wandb")
     
+    # Only validate required fields (project and artifact must be selected in UI flow)
+    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+    if not entity:
+        raise ValueError("FIFTYONE_WANDB_ENTITY not set")
+    
+    # These will be set through the dynamic UI
     if not ctx.params.get("project"):
         raise ValueError("Missing required parameter: project")
     
     if not ctx.params.get("artifact"):
         raise ValueError("Missing required parameter: artifact")
-    
-    # Check secrets
-    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
-    if not entity:
-        raise ValueError("FIFTYONE_WANDB_ENTITY not set")
 
 
 def _load_view_from_wandb(ctx):
     """Load view from WandB artifact"""
     
-    # Validate
+    # Validate only when executing (not during resolve_input)
+    if not ctx.params.get("project") or not ctx.params.get("artifact"):
+        raise ValueError("Please select both project and artifact")
+    
     _validate_inputs(ctx)
     
     # Get parameters
