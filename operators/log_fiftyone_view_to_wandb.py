@@ -522,12 +522,15 @@ class LogFiftyOneViewToWandB(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Check for credentials and prompt if missing
-        entity, api_key = _get_credentials(ctx)
+        # Check for credentials - always show fields if not in secrets
+        entity_from_secrets = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
+        api_key_from_secrets = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
         
-        if not entity or not api_key:
+        # If credentials not in secrets, show input fields
+        if not entity_from_secrets or not api_key_from_secrets:
             missing = []
-            if not entity:
+            
+            if not entity_from_secrets:
                 inputs.str(
                     "wandb_entity",
                     label="⚠️ W&B Entity (Required)",
@@ -536,7 +539,7 @@ class LogFiftyOneViewToWandB(foo.Operator):
                 )
                 missing.append("entity")
             
-            if not api_key:
+            if not api_key_from_secrets:
                 inputs.str(
                     "wandb_api_key",
                     label="⚠️ W&B API Key (Required)",
@@ -557,6 +560,12 @@ class LogFiftyOneViewToWandB(foo.Operator):
                     )
                 )
             )
+        
+        # Get credentials (from secrets or params)
+        entity, api_key = _get_credentials(ctx)
+        
+        # Only proceed if we have both credentials
+        if not entity or not api_key:
             return types.Property(inputs)
         
         # Add view target selector (Dataset, Current view, or Selected samples)
