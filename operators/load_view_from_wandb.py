@@ -118,7 +118,10 @@ class LoadViewFromWandB(foo.Operator):
         # Artifact selector (dataset artifacts only)
         project = ctx.params.get("project")
         if project:
-            artifacts = list(api.artifacts(type_name="dataset", project=f"{entity}/{project}"))
+            # Correct API: use path parameter, not project
+            artifacts = list(api.artifacts(type_name="dataset", per_page=100))
+            # Filter to this project
+            artifacts = [a for a in artifacts if a.project == project or f"{entity}/{project}" in a.qualified_name]
             artifact_choices = [
                 types.Choice(label=f"{a.name}:{a.version}", value=f"{a.name}:{a.version}")
                 for a in artifacts
