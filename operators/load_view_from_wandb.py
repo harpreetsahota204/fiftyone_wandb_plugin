@@ -129,8 +129,8 @@ class LoadViewFromWandB(foo.Operator):
             for run in runs:
                 for artifact in run.logged_artifacts():
                     if artifact.type == "dataset":
-                        # Store just the name with version (not full path)
-                        artifact_names.add(f"{artifact.name}:v{artifact.version}")
+                        # Use the artifact name exactly as it appears in WandB
+                        artifact_names.add(artifact.name)
             
             artifact_choices = [
                 types.Choice(label=name, value=name)
