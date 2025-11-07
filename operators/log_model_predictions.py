@@ -31,11 +31,21 @@ except ImportError:
 def _get_credentials(ctx):
     """Get W&B credentials from context.
     
+    Checks both secrets and params (for temporary credentials entered via form).
+    
     Returns:
         tuple: (entity, api_key) where either value may be None
     """
+    # First try secrets (persistent)
     entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
     api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
+    
+    # Fall back to params (temporary from form input)
+    if not entity:
+        entity = ctx.params.get("wandb_entity")
+    if not api_key:
+        api_key = ctx.params.get("wandb_api_key")
+    
     return entity, api_key
 
 
@@ -575,6 +585,44 @@ class LogModelPredictions(foo.Operator):
     
     def resolve_input(self, ctx):
         inputs = types.Object()
+        
+        # Check for credentials and prompt if missing
+        entity, api_key = _get_credentials(ctx)
+        
+        if not entity or not api_key:
+            missing = []
+            if not entity:
+                inputs.str(
+                    "wandb_entity",
+                    label="⚠️ W&B Entity (Required)",
+                    description="Your Weights & Biases team name or username",
+                    required=True,
+                )
+                missing.append("entity")
+            
+            if not api_key:
+                inputs.str(
+                    "wandb_api_key",
+                    label="⚠️ W&B API Key (Required)",
+                    description="Get your API key from https://wandb.ai/authorize",
+                    required=True,
+                    view=types.PasswordView()
+                )
+                missing.append("API key")
+            
+            inputs.view(
+                "credentials_warning",
+                types.Warning(
+                    label="Missing Credentials",
+                    description=(
+                        f"Missing: {', '.join(missing)}. Enter them below to proceed.\n\n"
+                        "💡 To avoid entering credentials each time:\n"
+                        "• Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY as environment variables\n"
+                        "• Or configure them in FiftyOne App Settings → Secrets (Enterprise/Teams)"
+                    )
+                )
+            )
+            return types.Property(inputs)
         
         # Target view selector (Dataset, Current view, or Selected samples)
         inputs.view_target(ctx)

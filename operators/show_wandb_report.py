@@ -11,6 +11,7 @@ from ..wandb_helpers import (
     DEFAULT_WANDB_URL,
     get_credentials,
     get_wandb_api,
+    prompt_for_missing_credentials,
     WANDB_AVAILABLE,
 )
 
@@ -31,6 +32,10 @@ class ShowWandBReport(foo.Operator):
 
     def resolve_input(self, ctx):
         inputs = types.Object()
+        
+        # Check for credentials and prompt if missing
+        if not prompt_for_missing_credentials(ctx, inputs):
+            return types.Property(inputs)
         
         # Get credentials
         entity, api_key, project = get_credentials(ctx)

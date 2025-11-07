@@ -12,6 +12,7 @@ from ..wandb_helpers import (
     get_credentials,
     get_wandb_api,
     get_project_url,
+    prompt_for_missing_credentials,
     WANDB_AVAILABLE,
 )
 
@@ -32,6 +33,10 @@ class ShowWandBRun(foo.Operator):
 
     def resolve_input(self, ctx):
         inputs = types.Object()
+        
+        # Check for credentials and prompt if missing
+        if not prompt_for_missing_credentials(ctx, inputs):
+            return types.Property(inputs)
         
         # Get credentials
         entity, api_key, project = get_credentials(ctx)
