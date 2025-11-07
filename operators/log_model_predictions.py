@@ -109,7 +109,14 @@ def _validate_execution_params(ctx):
 # ============================================================================
 
 def _collect_label_ids(label):
-    """Extract all label IDs from a label object"""
+    """Extract all label IDs from a label object.
+    
+    Note: String fields (VLM outputs) don't have IDs, so we return empty list.
+    """
+    # String fields (VLM outputs) have no IDs
+    if isinstance(label, str):
+        return []
+    
     if isinstance(label, fol.Detections):
         return [d.id for d in label.detections]
     elif isinstance(label, fol.Polylines):
@@ -137,7 +144,14 @@ def _collect_label_ids(label):
 # ============================================================================
 
 def _get_avg_confidence(label):
-    """Get average confidence from predictions"""
+    """Get average confidence from predictions.
+    
+    Note: String fields (VLM outputs) don't have confidence scores.
+    """
+    # String fields (VLM outputs) have no confidence
+    if isinstance(label, str):
+        return None
+    
     if isinstance(label, fol.Detections):
         confs = [d.confidence for d in label.detections if d.confidence]
         return round(sum(confs) / len(confs), 3) if confs else None
@@ -153,7 +167,14 @@ def _get_avg_confidence(label):
 
 
 def _get_num_predictions(label):
-    """Count predictions in label"""
+    """Count predictions in label.
+    
+    Note: String fields (VLM outputs) count as 1 prediction.
+    """
+    # String fields (VLM outputs) count as 1 prediction
+    if isinstance(label, str):
+        return 1 if label else 0
+    
     if isinstance(label, fol.Detections):
         return len(label.detections)
     elif isinstance(label, fol.Polylines):
@@ -177,8 +198,16 @@ def _get_num_predictions(label):
 def _format_label(label):
     """
     Format any FiftyOne label type for WandB Table display.
-    Reuses the same logic from log_fiftyone_view_to_wandb
+    
+    Supports all label types including string fields (VLM outputs).
     """
+    # String field (VLM output) - return as-is with truncation for very long strings
+    if isinstance(label, str):
+        # Truncate very long strings for table display
+        if len(label) > 500:
+            return label[:500] + "..."
+        return label
+    
     # Classification
     if isinstance(label, fol.Classification):
         conf = f" ({label.confidence:.2f})" if label.confidence else ""
@@ -239,13 +268,22 @@ def _format_label(label):
 
 
 def _calculate_class_distribution(view, pred_field):
-    """Calculate overall class distribution from predictions"""
+    """Calculate overall class distribution from predictions.
+    
+    Note: For string fields (VLM outputs), we count unique responses.
+    """
     all_classes = []
     
     for sample in view.iter_samples():
         pred = sample[pred_field] if pred_field in sample else None
         
-        if isinstance(pred, fol.Detections):
+        # String field (VLM output) - count the string itself as a "class"
+        if isinstance(pred, str):
+            if pred:  # Only count non-empty strings
+                # For very long strings, use first 100 chars as the "class"
+                class_label = pred[:100] if len(pred) > 100 else pred
+                all_classes.append(class_label)
+        elif isinstance(pred, fol.Detections):
             all_classes.extend(d.label for d in pred.detections if d.label)
         elif isinstance(pred, fol.Polylines):
             all_classes.extend(p.label for p in pred.polylines if p.label)
@@ -289,7 +327,11 @@ def _create_predictions_table(view, pred_field, prompt_field=None, include_image
         all_label_ids.extend(sample_label_ids)
         
         # Track low confidence labels (for active learning) - works for ALL label types
-        if isinstance(pred_label, fol.Detections):
+        # Note: String fields (VLM outputs) don't have confidence, so skip them
+        if isinstance(pred_label, str):
+            # String fields have no confidence, skip low-confidence tracking
+            pass
+        elif isinstance(pred_label, fol.Detections):
             for det in pred_label.detections:
                 if det.confidence and det.confidence < 0.5:
                     low_confidence_label_ids.append(det.id)
@@ -385,19 +427,29 @@ def _log_model_predictions(ctx):
             model_config = {"raw_config": model_config_json}
     
     # Auto-generate artifact name
+    import re
     artifact_name = ctx.params.get("artifact_name")
     if artifact_name:
-        # Sanitize
-        import re
+        # Sanitize user-provided name
         artifact_name = artifact_name.lower()
+        # Replace invalid chars with dashes (W&B allows: alphanumeric, dashes, underscores, dots)
         artifact_name = re.sub(r'[^a-z0-9\-_.]', '-', artifact_name)
+        # Collapse multiple dashes
         artifact_name = re.sub(r'-+', '-', artifact_name)
+        # Remove leading/trailing dashes
         artifact_name = artifact_name.strip('-')
     else:
         # Auto-generate: model_name_predictions_timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        artifact_name = f"{model_name.lower()}_predictions_{timestamp}"
-        artifact_name = artifact_name.replace(" ", "_")
+        # Sanitize model name for artifact (W&B allows: alphanumeric, dashes, underscores, dots)
+        safe_model_name = model_name.lower()
+        safe_model_name = re.sub(r'[^a-z0-9\-_.]', '_', safe_model_name)
+        # Collapse multiple underscores/dashes
+        safe_model_name = re.sub(r'[_-]+', '_', safe_model_name)
+        # Remove leading/trailing special chars
+        safe_model_name = safe_model_name.strip('_-.')
+        
+        artifact_name = f"{safe_model_name}_predictions_{timestamp}"
     
     # 3. Create predictions table
     table, all_label_ids, low_confidence_ids = _create_predictions_table(
