@@ -20,6 +20,7 @@ from .operators import (
     ShowWandBReport,
     LogFiftyOneViewToWandB,
     LogModelPredictions,
+    LoadViewFromWandB,
 )
 
 
@@ -32,3 +33,4 @@ def register(plugin):
     plugin.register(ShowWandBReport)
     plugin.register(LogFiftyOneViewToWandB)
     plugin.register(LogModelPredictions)
+    plugin.register(LoadViewFromWandB)
