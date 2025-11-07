@@ -119,22 +119,22 @@ class LoadViewFromWandB(foo.Operator):
             inputs.str("project", label="W&B Project", required=True)
             return types.Property(inputs)
         
-        # Artifact selector (dataset artifacts only)
+        # Artifact selector (dataset artifacts only)  
         project = ctx.params.get("project")
         if project:
-            # Fetch artifacts using runs - each run that logged an artifact
+            # Fetch artifacts from runs
             runs = api.runs(path=f"{entity}/{project}")
-            artifact_set = set()
+            artifact_names = set()
             
             for run in runs:
-                # Get artifacts logged by this run
                 for artifact in run.logged_artifacts():
                     if artifact.type == "dataset":
-                        artifact_set.add(f"{artifact.name}:{artifact.version}")
+                        # Store just the name with version (not full path)
+                        artifact_names.add(f"{artifact.name}:v{artifact.version}")
             
             artifact_choices = [
                 types.Choice(label=name, value=name)
-                for name in sorted(artifact_set)
+                for name in sorted(artifact_names)
             ]
             
             if artifact_choices:
@@ -158,7 +158,9 @@ class LoadViewFromWandB(foo.Operator):
         # Show artifact info
         artifact_name = ctx.params.get("artifact")
         if artifact_name:
-            artifact = api.artifact(f"{entity}/{project}/{artifact_name}")
+            # Correct format: entity/project/artifactName:version
+            full_artifact_path = f"{entity}/{project}/{artifact_name}"
+            artifact = api.artifact(full_artifact_path)
             num_samples = artifact.metadata.get("num_samples", 0)
             dataset_name = artifact.metadata.get("fiftyone_dataset_name", "unknown")
             
