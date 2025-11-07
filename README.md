@@ -20,8 +20,12 @@ This plugin connects [FiftyOne](https://docs.voxel51.com/) datasets with [Weight
 # Install dependencies
 pip install -U fiftyone wandb
 
-# Download plugin
+# Download and install plugin
 fiftyone plugins download https://github.com/harpreetsahota204/fiftyone_wandb_plugin
+
+# Verify installation
+fiftyone plugins list
+# Should show: @harpreetsahota/wandb
 ```
 
 ---
@@ -233,41 +237,44 @@ Track VLM inference with per-sample prompts:
 ```python
 import fiftyone as fo
 import fiftyone.operators as foo
-import openai
 
-dataset = fo.load_dataset("<your-dataset>")
+dataset = fo.load_dataset("traffic-dataset")
 
-dataset.apply_model(...)
+# Step 1: Add per-sample prompts to your dataset
+for sample in dataset:
+    # Example: different prompt for each sample based on context
+    sample["user_prompt"] = f"Analyze frame {sample.id}: Describe all vehicles and traffic conditions."
+    sample.save()
 
-# Step 2: Apply VLM
-system_prompt = "You are an expert traffic safety analyst with 20 years of experience."
+# Step 2: Run your VLM inference (example)
+# After inference, VLM outputs are stored as strings in a field
+# For example: sample["vlm_output"] = "2 cars traveling at 65mph, 1 truck..."
 
-
-# Step 3: Log to WandB
+# Step 3: Log to WandB with both global config and per-sample prompts
 operator = foo.get_operator("@harpreetsahota/wandb/log_model_predictions")
 operator(
     dataset,
-    model_name="<the-vlm-you-used>",
+    model_name="gpt-4-vision",  # or "claude-3", "llava", etc.
     predictions_field="vlm_output",
     project="traffic-analysis",
     
     # Global config (same for all samples)
     model_config={
-        "system_prompt": system_prompt,
+        "system_prompt": "You are an expert traffic safety analyst with 20 years of experience.",
         "temperature": 0.7,
         "max_tokens": 150,
-        ...
+        "model_version": "gpt-4-vision-preview"
     },
     
-    # Per-sample prompts (which come from a field on your dataset)
+    # Per-sample prompts (field containing unique prompts for each sample)
     prompt_field="user_prompt"
 )
 
 # WandB Table will show:
 # | sample_id | prompt                        | predictions                                    |
 # |-----------|-------------------------------|------------------------------------------------|
-# | 001       | "Describe all vehicles..."    | "2 cars traveling at 65mph, 1 truck in right lane..." |
-# | 002       | "Identify traffic lights..."  | "Red traffic light at intersection, 2 pedestrians..." |
+# | 001       | "Analyze frame 001: Describe..." | "2 cars traveling at 65mph, 1 truck in right lane..." |
+# | 002       | "Analyze frame 002: Describe..." | "Red traffic light at intersection, 2 pedestrians..." |
 ```
 
 ---
@@ -280,13 +287,13 @@ All operators have interactive UIs in the FiftyOne App:
 
 1. Open your dataset: `fo.launch_app(dataset)`
 2. **Create your view** (apply filters, select samples)
-3. Click backtick (`) to open the operators menu → **"W&B: Log Training View"**
+3. Click backtick (`) to open the operators menu → **"W&B: Save View as Artifact"**
 4. Choose target:
    - 📦 **Dataset** - All samples
    - 🔍 **Current view** - Filtered samples  
    - ⭐ **Selected samples** - Hand-picked samples
 5. Toggle **"Include Labels"** ON
-6. Enter your WandB Run ID
+6. Enter your WandB Run ID (optional - auto-generated if not provided)
 7. Execute!
 
 ### Log Model Predictions
@@ -308,7 +315,28 @@ All operators have interactive UIs in the FiftyOne App:
 
 ### Recreate Training Data
 
-Every training view is stored with sample IDs in WandB metadata:
+Every training view is stored with sample IDs in WandB metadata. You can recreate views either manually or using the plugin operator:
+
+**Option 1: Using the Plugin Operator (Recommended)**
+
+```python
+import fiftyone as fo
+import fiftyone.operators as foo
+
+# Open your dataset
+dataset = fo.load_dataset("my_dataset")
+session = fo.launch_app(dataset)
+
+# Use the operator to load the view from WandB
+# This can be done via the UI (backtick menu → "W&B: Load View from Artifact")
+# Or programmatically:
+operator = foo.get_operator("@harpreetsahota/wandb/load_view_from_wandb")
+
+# Note: load_view_from_wandb currently works best through the UI
+# as it needs interactive project/artifact selection
+```
+
+**Option 2: Manual Reconstruction**
 
 ```python
 import fiftyone as fo
@@ -431,8 +459,10 @@ The plugin provides these operators (accessible via Python or FiftyOne App):
 |----------|---------|
 | `log_fiftyone_view_to_wandb` | Log training data to WandB |
 | `log_model_predictions` | Log inference results to WandB |
+| `load_view_from_wandb` | Recreate FiftyOne view from WandB artifact |
 | `log_wandb_run` | Link WandB run to FiftyOne dataset |
 | `show_wandb_run` | Display WandB run in FiftyOne panel |
+| `show_wandb_report` | Display WandB report in FiftyOne panel |
 | `open_wandb_panel` | Open WandB panel in FiftyOne App |
 | `get_wandb_run_info` | Retrieve run metadata |
 
