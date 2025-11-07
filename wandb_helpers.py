@@ -78,9 +78,8 @@ def prompt_for_missing_credentials(ctx, inputs):
         inputs.str(
             "wandb_api_key",
             label="⚠️ W&B API Key (Required)",
-            description="Get your API key from https://wandb.ai/authorize",
+            description="Get your API key from https://wandb.ai/authorize. ⚠️ This will be visible as you type.",
             required=True,
-            view=types.PasswordView()  # Hide the API key for security
         )
         missing.append("API key")
     

@@ -540,9 +540,8 @@ class LogFiftyOneViewToWandB(foo.Operator):
                 inputs.str(
                     "wandb_api_key",
                     label="⚠️ W&B API Key (Required)",
-                    description="Get your API key from https://wandb.ai/authorize",
+                    description="Get your API key from https://wandb.ai/authorize. ⚠️ This will be visible as you type.",
                     required=True,
-                    view=types.PasswordView()
                 )
                 missing.append("API key")
             
