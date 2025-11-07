@@ -9,6 +9,8 @@ import tempfile
 from datetime import datetime
 from bson import json_util
 
+import fiftyone.operators.types as types
+
 try:
     import wandb
     WANDB_AVAILABLE = True
@@ -25,13 +27,79 @@ DEFAULT_WANDB_URL = "https://wandb.ai"
 def get_credentials(ctx):
     """Get W&B credentials from context.
     
+    Checks both secrets and params (for temporary credentials entered via form).
+    
     Returns:
         tuple: (entity, api_key, project) where any value may be None
     """
+    # First try secrets (persistent)
     entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
     api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
     project = ctx.secrets.get("FIFTYONE_WANDB_PROJECT")
+    
+    # Fall back to params (temporary from form input)
+    if not entity:
+        entity = ctx.params.get("wandb_entity")
+    if not api_key:
+        api_key = ctx.params.get("wandb_api_key")
+    if not project:
+        project = ctx.params.get("wandb_project")
+    
     return entity, api_key, project
+
+
+def prompt_for_missing_credentials(ctx, inputs):
+    """Add credential input fields if missing credentials are detected.
+    
+    This function checks for W&B credentials and if any are missing,
+    adds input fields to the form for users to enter them temporarily.
+    It also displays helpful instructions about setting up persistent secrets.
+    
+    Args:
+        ctx: Operator execution context
+        inputs: types.Object to add input fields to
+        
+    Returns:
+        bool: True if all required credentials are present, False otherwise
+    """
+    entity, api_key, project = get_credentials(ctx)
+    missing = []
+    
+    if not entity:
+        inputs.str(
+            "wandb_entity",
+            label="⚠️ W&B Entity (Required)",
+            description="Your Weights & Biases team name or username",
+            required=True,
+        )
+        missing.append("entity")
+    
+    if not api_key:
+        inputs.str(
+            "wandb_api_key",
+            label="⚠️ W&B API Key (Required)",
+            description="Get your API key from https://wandb.ai/authorize",
+            required=True,
+            view=types.PasswordView()  # Hide the API key for security
+        )
+        missing.append("API key")
+    
+    if missing:
+        inputs.view(
+            "credentials_warning",
+            types.Warning(
+                label="Missing Credentials",
+                description=(
+                    f"Missing: {', '.join(missing)}. Enter them below to proceed.\n\n"
+                    "💡 To avoid entering credentials each time:\n"
+                    "• Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY as environment variables\n"
+                    "• Or configure them in FiftyOne App Settings → Secrets (Enterprise/Teams)"
+                )
+            )
+        )
+        return False
+    
+    return True
 
 
 def get_wandb_config(ctx):
