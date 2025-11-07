@@ -22,34 +22,71 @@ DEFAULT_WANDB_URL = "https://wandb.ai"
 # W&B Configuration Helpers
 # ===========================
 
+def get_credentials(ctx):
+    """Get W&B credentials from context.
+    
+    Returns:
+        tuple: (entity, api_key, project) where any value may be None
+    """
+    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
+    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
+    project = ctx.secrets.get("FIFTYONE_WANDB_PROJECT")
+    return entity, api_key, project
+
+
 def get_wandb_config(ctx):
-    """Get W&B configuration from secrets with fallbacks"""
-    import os
-    config = {
-        "api_key": ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY"),
-        "entity": ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY"),
-        "project": ctx.secrets.get("FIFTYONE_WANDB_PROJECT") or os.getenv("FIFTYONE_WANDB_PROJECT"),
+    """Get W&B configuration from secrets.
+    
+    Returns:
+        dict: Configuration with api_key, entity, and project keys
+    """
+    entity, api_key, project = get_credentials(ctx)
+    return {
+        "api_key": api_key,
+        "entity": entity,
+        "project": project,
     }
-    return config
 
 
 def ensure_wandb_login(ctx):
-    """Ensure W&B is logged in"""
+    """Ensure W&B is logged in.
+    
+    Args:
+        ctx: Operator execution context
+        
+    Raises:
+        ImportError: If wandb is not installed
+        ValueError: If API key is not set
+    """
     if not WANDB_AVAILABLE:
         raise ImportError("wandb is not installed. Install it with: pip install wandb")
     
-    import os
-    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
-    if api_key:
-        wandb.login(key=api_key)
-    # If no API key, wandb will use cached login or prompt
+    _, api_key, _ = get_credentials(ctx)
+    
+    if not api_key:
+        raise ValueError("FIFTYONE_WANDB_API_KEY not set in secrets")
+    
+    # Login only once with relogin=False
+    wandb.login(key=api_key, relogin=False)
 
 
 def get_wandb_api(ctx):
-    """Initialize W&B API client"""
+    """Get authenticated W&B API client.
+    
+    Handles login once and returns API client.
+    
+    Args:
+        ctx: Operator execution context
+        
+    Returns:
+        wandb.Api: Authenticated API client
+        
+    Raises:
+        ImportError: If wandb is not installed
+        ValueError: If required credentials are missing
+    """
     ensure_wandb_login(ctx)
-    api = wandb.Api()
-    return api
+    return wandb.Api()
 
 
 # ===========================
