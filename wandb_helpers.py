@@ -164,7 +164,26 @@ def prompt_for_missing_credentials(ctx, inputs):
         if needs_api_key and not api_key_param:
             return False  # API key input field shown but not filled yet
         
-        # Both fields have been filled in the form, we can proceed
+        # Both fields have been filled in the form
+        # Set them as environment variables for the current session
+        # so user doesn't have to re-enter for subsequent operators
+        os.environ["FIFTYONE_WANDB_ENTITY"] = entity_param
+        os.environ["FIFTYONE_WANDB_API_KEY"] = api_key_param
+        
+        # Show success message
+        inputs.view(
+            "credentials_saved",
+            types.Notice(
+                label="✅ Credentials saved for this session",
+                description=(
+                    "Your credentials will work for all operators until you close FiftyOne.\n\n"
+                    "💡 To make them permanent, add these lines to ~/.zshrc or ~/.bashrc:\n"
+                    f"export FIFTYONE_WANDB_ENTITY=\"{entity_param}\"\n"
+                    f"export FIFTYONE_WANDB_API_KEY=\"{api_key_param}\""
+                )
+            )
+        )
+        
         return True
     
     # All credentials available from secrets
