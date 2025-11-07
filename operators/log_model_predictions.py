@@ -18,8 +18,11 @@ import fiftyone.zoo as foz
 
 from ..wandb_helpers import (
     WANDB_AVAILABLE,
+    create_mock_context,
     get_credentials,
     get_wandb_api,
+    is_vlm_output,
+    parse_model_config,
     prompt_for_missing_credentials,
     sanitize_for_artifact,
     sanitize_for_run_key,
@@ -41,7 +44,7 @@ def _collect_label_ids(label):
     Note: String fields (VLM outputs) don't have IDs, so we return empty list.
     """
     # String fields (VLM outputs) have no IDs
-    if isinstance(label, str):
+    if is_vlm_output(label):
         return []
     
     if isinstance(label, fol.Detections):
@@ -76,7 +79,7 @@ def _get_avg_confidence(label):
     Note: String fields (VLM outputs) don't have confidence scores.
     """
     # String fields (VLM outputs) have no confidence
-    if isinstance(label, str):
+    if is_vlm_output(label):
         return None
     
     if isinstance(label, fol.Detections):
@@ -99,7 +102,7 @@ def _get_num_predictions(label):
     Note: String fields (VLM outputs) count as 1 prediction.
     """
     # String fields (VLM outputs) count as 1 prediction
-    if isinstance(label, str):
+    if is_vlm_output(label):
         return 1 if label else 0
     
     if isinstance(label, fol.Detections):
@@ -129,7 +132,7 @@ def _format_label(label):
     Supports all label types including string fields (VLM outputs).
     """
     # String field (VLM output) - return as-is with truncation for very long strings
-    if isinstance(label, str):
+    if is_vlm_output(label):
         # Truncate very long strings for table display
         if len(label) > 500:
             return label[:500] + "..."
@@ -205,7 +208,7 @@ def _calculate_class_distribution(view, pred_field):
         pred = sample[pred_field] if pred_field in sample else None
         
         # String field (VLM output) - count the string itself as a "class"
-        if isinstance(pred, str):
+        if is_vlm_output(pred):
             if pred:  # Only count non-empty strings
                 # For very long strings, use first 100 chars as the "class"
                 class_label = pred[:100] if len(pred) > 100 else pred
@@ -255,7 +258,7 @@ def _create_predictions_table(view, pred_field, prompt_field=None, include_image
         
         # Track low confidence labels (for active learning) - works for ALL label types
         # Note: String fields (VLM outputs) don't have confidence, so skip them
-        if isinstance(pred_label, str):
+        if is_vlm_output(pred_label):
             # String fields have no confidence, skip low-confidence tracking
             pass
         elif isinstance(pred_label, fol.Detections):
@@ -316,11 +319,8 @@ def _create_predictions_table(view, pred_field, prompt_field=None, include_image
 def _log_model_predictions(ctx):
     """Log model predictions to WandB"""
     
-    # Get credentials and validate
-    entity, api_key, _ = get_credentials(ctx)
-    
-    if not entity or not api_key:
-        raise ValueError("Missing W&B credentials. Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY")
+    # Get credentials - get_wandb_api handles validation internally
+    entity, _, _ = get_credentials(ctx)
     
     view = ctx.target_view()
     dataset = ctx.dataset
@@ -333,20 +333,8 @@ def _log_model_predictions(ctx):
     prompt_field = ctx.params.get("prompt_field")
     include_images = ctx.params.get("include_images", False)
     
-    # Parse model_config (could be dict from __call__ or JSON string from UI)
-    # Check both "model_config" (programmatic) and "model_config_json" (UI)
-    model_config = ctx.params.get("model_config") or ctx.params.get("model_config_json")
-    
-    if isinstance(model_config, str):
-        # Parse JSON string from UI
-        try:
-            model_config = json.loads(model_config.strip()) if model_config.strip() else {}
-        except json.JSONDecodeError as e:
-            # Log parse error but continue with raw string
-            print(f"Warning: Failed to parse model_config as JSON: {e}")
-            model_config = {"raw_config": model_config}
-    elif model_config is None:
-        model_config = {}
+    # Parse model_config using helper (handles both programmatic and UI inputs)
+    model_config = parse_model_config(ctx)
     
     # Generate and sanitize artifact name
     artifact_name = ctx.params.get("artifact_name")
@@ -410,8 +398,8 @@ def _log_model_predictions(ctx):
     artifact.add(table, "predictions")
     
     # 7. Upload to WandB
-    # Login to WandB (credentials already validated above)
-    wandb.login(key=api_key, relogin=False)
+    # Get API (handles login internally)
+    get_wandb_api(ctx)
     
     run_id = f"predictions_{uuid.uuid4().hex[:8]}"
     
@@ -501,23 +489,7 @@ class LogModelPredictions(foo.Operator):
         dataset = sample_collection._dataset
         view = sample_collection.view()
         
-        class MockContext:
-            def __init__(self, view, dataset, params):
-                self.view = view
-                self.dataset = dataset
-                self.params = params
-                self._target_view = view
-                # Cache secrets from environment
-                self.secrets = {
-                    "FIFTYONE_WANDB_API_KEY": os.getenv("FIFTYONE_WANDB_API_KEY"),
-                    "FIFTYONE_WANDB_ENTITY": os.getenv("FIFTYONE_WANDB_ENTITY"),
-                    "FIFTYONE_WANDB_PROJECT": os.getenv("FIFTYONE_WANDB_PROJECT"),
-                }
-            
-            def target_view(self):
-                return self._target_view
-        
-        ctx = MockContext(view, dataset, {
+        ctx = create_mock_context(view, dataset, {
             "project": project,
             "model_name": model_name,
             "model_version": model_version,
@@ -533,9 +505,11 @@ class LogModelPredictions(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Prompt for credentials if missing
+        # Prompt for credentials if missing - all validation happens here
         if not prompt_for_missing_credentials(ctx, inputs):
             return types.Property(inputs)
+        
+        # Credentials validated, get API client
         
         # Target view selector (Dataset, Current view, or Selected samples)
         inputs.view_target(ctx)
@@ -601,7 +575,7 @@ class LogModelPredictions(foo.Operator):
             )
         
         # WandB project dropdown
-        entity, api_key, project = get_credentials(ctx)
+        entity, _, project = get_credentials(ctx)
         
         try:
             api = get_wandb_api(ctx)

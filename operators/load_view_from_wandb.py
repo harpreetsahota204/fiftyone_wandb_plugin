@@ -23,18 +23,18 @@ except ImportError:
 def _load_view_from_wandb(ctx):
     """Load view from WandB artifact"""
     
-    # Get credentials and API client (handles login)
+    # Get credentials and API client (handles login and validation)
     entity, _, _ = get_credentials(ctx)
     api = get_wandb_api(ctx)
     
     # Get parameters (UI enforces required=True, so these will be present)
-    project = ctx.params["project"]
+    project_name = ctx.params["project"]
     artifact_name = ctx.params["artifact"]
     action = ctx.params.get("action", "apply_to_session")
     view_name = ctx.params.get("view_name")
     
     # Fetch artifact
-    artifact = api.artifact(f"{entity}/{project}/{artifact_name}")
+    artifact = api.artifact(f"{entity}/{project_name}/{artifact_name}")
     
     # Get sample IDs from metadata
     sample_ids = artifact.metadata["sample_ids"]
@@ -73,12 +73,12 @@ class LoadViewFromWandB(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Prompt for credentials if missing
+        # Prompt for credentials if missing - all validation happens here
         if not prompt_for_missing_credentials(ctx, inputs):
             return types.Property(inputs)
         
         # Get credentials and API
-        entity, api_key, project = get_credentials(ctx)
+        entity, _, project = get_credentials(ctx)
         
         try:
             api = get_wandb_api(ctx)
@@ -103,9 +103,9 @@ class LoadViewFromWandB(foo.Operator):
         )
         
         # Artifact selector (dataset artifacts only)  
-        selected_project = ctx.params.get("project")
-        if selected_project:
-            runs = api.runs(path=f"{entity}/{selected_project}")
+        project_name = ctx.params.get("project")
+        if project_name:
+            runs = api.runs(path=f"{entity}/{project_name}")
             artifact_names = set()
             
             for run in runs:
@@ -137,9 +137,9 @@ class LoadViewFromWandB(foo.Operator):
             return types.Property(inputs)
         
         # Show artifact info
-        selected_artifact = ctx.params.get("artifact")
-        if selected_artifact and selected_project:
-            full_artifact_path = f"{entity}/{selected_project}/{selected_artifact}"
+        artifact_name = ctx.params.get("artifact")
+        if artifact_name and project_name:
+            full_artifact_path = f"{entity}/{project_name}/{artifact_name}"
             artifact = api.artifact(full_artifact_path)
             num_samples = artifact.metadata.get("num_samples", 0)
             dataset_name = artifact.metadata.get("fiftyone_dataset_name", "unknown")

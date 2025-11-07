@@ -458,3 +458,83 @@ def get_candidate_run_names(ctx, project_name):
     except Exception:
         return []
 
+
+# ===========================
+# Parsing Helpers
+# ===========================
+
+def parse_model_config(ctx):
+    """Parse model config from either programmatic or UI parameter.
+    
+    Args:
+        ctx: Operator execution context
+        
+    Returns:
+        dict: Parsed model configuration (empty dict if not provided)
+    """
+    # Check both "model_config" (programmatic) and "model_config_json" (UI)
+    config = ctx.params.get("model_config") or ctx.params.get("model_config_json")
+    
+    if isinstance(config, str):
+        # Parse JSON string from UI
+        try:
+            return json.loads(config.strip()) if config.strip() else {}
+        except json.JSONDecodeError as e:
+            # Log parse error but continue with raw string
+            print(f"Warning: Failed to parse model_config as JSON: {e}")
+            return {"raw_config": config}
+    
+    return config or {}
+
+
+def is_vlm_output(label):
+    """Check if label is a VLM string output (vs structured label).
+    
+    Note: String fields are used for Vision-Language Model (VLM) outputs
+    where the prediction is free-form text rather than structured labels.
+    All label processing functions handle strings as a special case.
+    
+    Args:
+        label: Label object or string to check
+        
+    Returns:
+        bool: True if label is a string (VLM output), False otherwise
+    """
+    return isinstance(label, str)
+
+
+# ===========================
+# Mock Context for Programmatic Use
+# ===========================
+
+def create_mock_context(view, dataset, params):
+    """Create mock context for programmatic operator calls.
+    
+    This enables using operators directly from Python code without going through the UI.
+    
+    Args:
+        view: FiftyOne view
+        dataset: FiftyOne dataset
+        params: Dictionary of operator parameters
+        
+    Returns:
+        MockContext: Context object compatible with operator execution
+    """
+    class MockContext:
+        def __init__(self, view, dataset, params):
+            self.view = view
+            self.dataset = dataset
+            self.params = params
+            self._target_view = view
+            # Cache secrets from environment
+            self.secrets = {
+                "FIFTYONE_WANDB_API_KEY": os.getenv("FIFTYONE_WANDB_API_KEY"),
+                "FIFTYONE_WANDB_ENTITY": os.getenv("FIFTYONE_WANDB_ENTITY"),
+                "FIFTYONE_WANDB_PROJECT": os.getenv("FIFTYONE_WANDB_PROJECT"),
+            }
+        
+        def target_view(self):
+            return self._target_view
+    
+    return MockContext(view, dataset, params)
+

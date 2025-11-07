@@ -33,15 +33,15 @@ class ShowWandBReport(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Check for credentials and prompt if missing
+        # Check for credentials and prompt if missing - all validation happens here
         if not prompt_for_missing_credentials(ctx, inputs):
             return types.Property(inputs)
         
         # Get credentials
-        entity, api_key, project = get_credentials(ctx)
+        entity, _, project = get_credentials(ctx)
         
         # Fetch and show projects dropdown
-        if entity and api_key and WANDB_AVAILABLE:
+        if entity and WANDB_AVAILABLE:
             # Get authenticated API (handles login once)
             try:
                 api = get_wandb_api(ctx)

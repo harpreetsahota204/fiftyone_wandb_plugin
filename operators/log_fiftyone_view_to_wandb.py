@@ -17,6 +17,7 @@ import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
     WANDB_AVAILABLE,
+    create_mock_context,
     extract_dataset_metadata,
     get_credentials,
     get_wandb_api,
@@ -280,11 +281,8 @@ def _add_embeddings(artifact, view, embedding_field):
 def _log_fiftyone_view_to_wandb(ctx):
     """Log FiftyOne view to WandB with comprehensive label support"""
     
-    # Get credentials and validate
-    entity, api_key, _ = get_credentials(ctx)
-    
-    if not entity or not api_key:
-        raise ValueError("Missing W&B credentials. Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY")
+    # Get credentials - get_wandb_api handles validation internally
+    entity, _, _ = get_credentials(ctx)
     
     view = ctx.target_view()
     dataset = ctx.dataset
@@ -337,8 +335,8 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # 5. Upload to WandB
-    # Login to WandB (credentials already validated above)
-    wandb.login(key=api_key, relogin=False)
+    # Get API (handles login internally)
+    get_wandb_api(ctx)
     
     # Use resume="allow" to handle both existing and new runs
     # If run exists, it resumes; if not, it creates new
@@ -405,22 +403,7 @@ class LogFiftyOneViewToWandB(foo.Operator):
         dataset = sample_collection._dataset
         view = sample_collection.view()
         
-        class MockContext:
-            def __init__(self, view, dataset, params):
-                self.view = view
-                self.dataset = dataset
-                self.params = params
-                # Cache secrets from environment
-                self.secrets = {
-                    "FIFTYONE_WANDB_API_KEY": os.getenv("FIFTYONE_WANDB_API_KEY"),
-                    "FIFTYONE_WANDB_ENTITY": os.getenv("FIFTYONE_WANDB_ENTITY"),
-                    "FIFTYONE_WANDB_PROJECT": os.getenv("FIFTYONE_WANDB_PROJECT"),
-                }
-            
-            def target_view(self):
-                return self.view
-        
-        ctx = MockContext(view, dataset, {
+        ctx = create_mock_context(view, dataset, {
             "project": project,
             "run_id": run_id,
             "artifact_name": artifact_name,
@@ -432,7 +415,7 @@ class LogFiftyOneViewToWandB(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Prompt for credentials if missing
+        # Prompt for credentials if missing - all validation happens here
         if not prompt_for_missing_credentials(ctx, inputs):
             return types.Property(inputs)
         
@@ -448,7 +431,7 @@ class LogFiftyOneViewToWandB(foo.Operator):
             ))
         
         # Get credentials and API
-        entity, api_key, project = get_credentials(ctx)
+        entity, _, project = get_credentials(ctx)
         
         try:
             api = get_wandb_api(ctx)
