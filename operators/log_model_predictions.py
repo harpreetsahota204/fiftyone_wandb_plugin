@@ -14,6 +14,7 @@ import fiftyone as fo
 import fiftyone.core.labels as fol
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
+import fiftyone.zoo as foz
 
 from ..wandb_helpers import WANDB_AVAILABLE
 
@@ -578,13 +579,32 @@ class LogModelPredictions(foo.Operator):
         # Target view selector (Dataset, Current view, or Selected samples)
         inputs.view_target(ctx)
         
-        # Model information
-        inputs.str(
-            "model_name",
-            label="Model Name",
-            description="Name of the model (e.g., 'yolov8n', 'resnet50')",
-            required=True
-        )
+        # Model information - check for downloaded zoo models
+        try:
+            downloaded_models = foz.list_downloaded_zoo_models()
+            model_names = list(downloaded_models.keys()) if downloaded_models else []
+        except Exception:
+            model_names = []
+        
+        if model_names:
+            # Create choices from downloaded models + option for custom entry
+            model_choices = [types.Choice(label=name, value=name) for name in sorted(model_names)]
+            
+            inputs.enum(
+                "model_name",
+                [c.value for c in model_choices],
+                label="Model Name",
+                description="Select a downloaded zoo model or type a custom name",
+                required=True,
+                view=types.AutocompleteView(choices=model_choices)
+            )
+        else:
+            inputs.str(
+                "model_name",
+                label="Model Name",
+                description="Name of the model (e.g., 'yolov8n', 'resnet50')",
+                required=True
+            )
         
         inputs.str(
             "model_version",
