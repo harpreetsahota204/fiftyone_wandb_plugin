@@ -16,92 +16,19 @@ import fiftyone.operators as foo
 import fiftyone.operators.types as types
 import fiftyone.zoo as foz
 
-from ..wandb_helpers import WANDB_AVAILABLE
+from ..wandb_helpers import (
+    WANDB_AVAILABLE,
+    get_credentials,
+    get_wandb_api,
+    prompt_for_missing_credentials,
+    sanitize_for_artifact,
+    sanitize_for_run_key,
+)
 
 try:
     import wandb
 except ImportError:
     wandb = None
-
-
-# ============================================================================
-# CREDENTIAL & API HELPERS
-# ============================================================================
-
-def _get_credentials(ctx):
-    """Get W&B credentials from context.
-    
-    Checks both secrets and params (for temporary credentials entered via form).
-    
-    Returns:
-        tuple: (entity, api_key) where either value may be None
-    """
-    # First try secrets (persistent)
-    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
-    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
-    
-    # Fall back to params (temporary from form input)
-    if not entity:
-        entity = ctx.params.get("wandb_entity")
-    if not api_key:
-        api_key = ctx.params.get("wandb_api_key")
-    
-    return entity, api_key
-
-
-def _get_wandb_api(ctx):
-    """Get authenticated W&B API client.
-    
-    Handles login once and returns API client.
-    
-    Args:
-        ctx: Operator execution context
-        
-    Returns:
-        wandb.Api: Authenticated API client
-        
-    Raises:
-        ImportError: If wandb is not installed
-        ValueError: If required credentials are missing
-    """
-    if not WANDB_AVAILABLE:
-        raise ImportError("wandb not installed. Run: pip install wandb")
-    
-    entity, api_key = _get_credentials(ctx)
-    
-    if not entity:
-        raise ValueError("FIFTYONE_WANDB_ENTITY not set in secrets")
-    
-    if not api_key:
-        raise ValueError("FIFTYONE_WANDB_API_KEY not set in secrets")
-    
-    # Login only once with relogin=False
-    wandb.login(key=api_key, relogin=False)
-    
-    return wandb.Api()
-
-
-# ============================================================================
-# VALIDATION
-# ============================================================================
-
-def _validate_execution_params(ctx):
-    """Validate parameters before execution.
-    
-    Args:
-        ctx: Operator execution context
-        
-    Raises:
-        ValueError: If required parameters are missing
-    """
-    if not ctx.params.get("project"):
-        raise ValueError("Missing required parameter: project")
-    
-    if not ctx.params.get("model_name"):
-        raise ValueError("Missing required parameter: model_name")
-    
-    if not ctx.params.get("predictions_field"):
-        raise ValueError("Missing required parameter: predictions_field")
 
 
 # ============================================================================
@@ -371,7 +298,9 @@ def _create_predictions_table(view, pred_field, prompt_field=None, include_image
         if include_images:
             try:
                 row.append(wandb.Image(sample.filepath))
-            except Exception:
+            except (FileNotFoundError, IOError, OSError) as e:
+                # Log specific error but continue processing
+                print(f"Warning: Could not load image for sample {sample.id}: {e}")
                 row.append(None)
         
         rows.append(row)
@@ -387,68 +316,46 @@ def _create_predictions_table(view, pred_field, prompt_field=None, include_image
 def _log_model_predictions(ctx):
     """Log model predictions to WandB"""
     
-    # 1. Validate parameters and get credentials
-    _validate_execution_params(ctx)
-    entity, api_key = _get_credentials(ctx)
+    # Get credentials and validate
+    entity, api_key, _ = get_credentials(ctx)
     
-    if not entity:
-        raise ValueError("FIFTYONE_WANDB_ENTITY not set in secrets")
+    if not entity or not api_key:
+        raise ValueError("Missing W&B credentials. Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY")
     
-    if not api_key:
-        raise ValueError("FIFTYONE_WANDB_API_KEY not set in secrets")
-    
-    # 2. Prepare
     view = ctx.target_view()
     dataset = ctx.dataset
-    project_name = ctx.params.get("project")
-    model_name = ctx.params.get("model_name")
+    # UI enforces required=True, so these will be present
+    project_name = ctx.params["project"]
+    model_name = ctx.params["model_name"]
+    pred_field = ctx.params["predictions_field"]
+    # Optional params
     model_version = ctx.params.get("model_version", "")
-    pred_field = ctx.params.get("predictions_field")
     prompt_field = ctx.params.get("prompt_field")
     include_images = ctx.params.get("include_images", False)
     
     # Parse model_config (could be dict from __call__ or JSON string from UI)
-    model_config = ctx.params.get("model_config", {})
+    # Check both "model_config" (programmatic) and "model_config_json" (UI)
+    model_config = ctx.params.get("model_config") or ctx.params.get("model_config_json")
+    
     if isinstance(model_config, str):
         # Parse JSON string from UI
         try:
-            model_config = json.loads(model_config) if model_config.strip() else {}
-        except json.JSONDecodeError:
-            model_config = {"raw_config": model_config}  # Fallback
+            model_config = json.loads(model_config.strip()) if model_config.strip() else {}
+        except json.JSONDecodeError as e:
+            # Log parse error but continue with raw string
+            print(f"Warning: Failed to parse model_config as JSON: {e}")
+            model_config = {"raw_config": model_config}
     elif model_config is None:
         model_config = {}
     
-    # Also check for model_config_json from UI
-    model_config_json = ctx.params.get("model_config_json")
-    if model_config_json and not model_config:
-        try:
-            model_config = json.loads(model_config_json) if model_config_json.strip() else {}
-        except json.JSONDecodeError:
-            model_config = {"raw_config": model_config_json}
-    
-    # Auto-generate artifact name
-    import re
+    # Generate and sanitize artifact name
     artifact_name = ctx.params.get("artifact_name")
     if artifact_name:
-        # Sanitize user-provided name
-        artifact_name = artifact_name.lower()
-        # Replace invalid chars with dashes (W&B allows: alphanumeric, dashes, underscores, dots)
-        artifact_name = re.sub(r'[^a-z0-9\-_.]', '-', artifact_name)
-        # Collapse multiple dashes
-        artifact_name = re.sub(r'-+', '-', artifact_name)
-        # Remove leading/trailing dashes
-        artifact_name = artifact_name.strip('-')
+        artifact_name = sanitize_for_artifact(artifact_name)
     else:
         # Auto-generate: model_name_predictions_timestamp
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        # Sanitize model name for artifact (W&B allows: alphanumeric, dashes, underscores, dots)
-        safe_model_name = model_name.lower()
-        safe_model_name = re.sub(r'[^a-z0-9\-_.]', '_', safe_model_name)
-        # Collapse multiple underscores/dashes
-        safe_model_name = re.sub(r'[_-]+', '_', safe_model_name)
-        # Remove leading/trailing special chars
-        safe_model_name = safe_model_name.strip('_-.')
-        
+        safe_model_name = sanitize_for_artifact(model_name)
         artifact_name = f"{safe_model_name}_predictions_{timestamp}"
     
     # 3. Create predictions table
@@ -530,17 +437,8 @@ def _log_model_predictions(ctx):
     run_config.total_predictions = len(all_label_ids)
     run_config.inference_timestamp = datetime.now().isoformat()
     
-    # Sanitize run key - must be a valid Python variable name
-    import re
-    # Replace any non-alphanumeric character with underscore
-    safe_model_name = re.sub(r'[^a-zA-Z0-9_]', '_', model_name)
-    # Remove leading digits or underscores (Python variables can't start with digit)
-    safe_model_name = re.sub(r'^[0-9_]+', '', safe_model_name)
-    # Remove multiple consecutive underscores
-    safe_model_name = re.sub(r'_+', '_', safe_model_name)
-    # Remove trailing underscores
-    safe_model_name = safe_model_name.strip('_')
-    
+    # Create run key (must be valid Python variable name)
+    safe_model_name = sanitize_for_run_key(model_name)
     run_key = f"inference_{safe_model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     dataset.register_run(run_key, run_config)
     
@@ -609,24 +507,12 @@ class LogModelPredictions(foo.Operator):
                 self.dataset = dataset
                 self.params = params
                 self._target_view = view
-                # Cache secrets on initialization
-                self._secrets = {
+                # Cache secrets from environment
+                self.secrets = {
                     "FIFTYONE_WANDB_API_KEY": os.getenv("FIFTYONE_WANDB_API_KEY"),
                     "FIFTYONE_WANDB_ENTITY": os.getenv("FIFTYONE_WANDB_ENTITY"),
                     "FIFTYONE_WANDB_PROJECT": os.getenv("FIFTYONE_WANDB_PROJECT"),
                 }
-            
-            @property
-            def secrets(self):
-                # Return dict-like object with cached values
-                class SecretsDict(dict):
-                    def __init__(self, secrets):
-                        super().__init__(secrets)
-                    
-                    def get(self, key, default=None):
-                        return super().get(key, default)
-                
-                return SecretsDict(self._secrets)
             
             def target_view(self):
                 return self._target_view
@@ -647,50 +533,8 @@ class LogModelPredictions(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Check for credentials - always show fields if not in secrets
-        entity_from_secrets = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
-        api_key_from_secrets = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
-        
-        # If credentials not in secrets, show input fields
-        if not entity_from_secrets or not api_key_from_secrets:
-            missing = []
-            
-            if not entity_from_secrets:
-                inputs.str(
-                    "wandb_entity",
-                    label="⚠️ W&B Entity (Required)",
-                    description="Your Weights & Biases team name or username",
-                    required=True,
-                )
-                missing.append("entity")
-            
-            if not api_key_from_secrets:
-                inputs.str(
-                    "wandb_api_key",
-                    label="⚠️ W&B API Key (Required)",
-                    description="Get your API key from https://wandb.ai/authorize. ⚠️ This will be visible as you type.",
-                    required=True,
-                )
-                missing.append("API key")
-            
-            inputs.view(
-                "credentials_warning",
-                types.Warning(
-                    label="Missing Credentials",
-                    description=(
-                        f"Missing: {', '.join(missing)}. Enter them below to proceed.\n\n"
-                        "💡 To avoid entering credentials each time:\n"
-                        "• Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY as environment variables\n"
-                        "• Or configure them in FiftyOne App Settings → Secrets (Enterprise/Teams)"
-                    )
-                )
-            )
-        
-        # Get credentials (from secrets or params)
-        entity, api_key = _get_credentials(ctx)
-        
-        # Only proceed if we have both credentials
-        if not entity or not api_key:
+        # Prompt for credentials if missing
+        if not prompt_for_missing_credentials(ctx, inputs):
             return types.Property(inputs)
         
         # Target view selector (Dataset, Current view, or Selected samples)
@@ -700,7 +544,9 @@ class LogModelPredictions(foo.Operator):
         try:
             downloaded_models = foz.list_downloaded_zoo_models()
             model_names = list(downloaded_models.keys()) if downloaded_models else []
-        except Exception:
+        except (AttributeError, RuntimeError) as e:
+            # Zoo models may not be available or DB not initialized
+            print(f"Info: Could not list zoo models: {e}")
             model_names = []
         
         if model_names:
@@ -755,38 +601,28 @@ class LogModelPredictions(foo.Operator):
             )
         
         # WandB project dropdown
-        entity, api_key = _get_credentials(ctx)
+        entity, api_key, project = get_credentials(ctx)
         
-        if entity and api_key and WANDB_AVAILABLE:
-            # Get authenticated API (handles login once)
-            try:
-                api = _get_wandb_api(ctx)
-            except (ImportError, ValueError) as e:
-                inputs.view("error", types.Error(
-                    label="Configuration Error",
-                    description=str(e)
-                ))
-                return types.Property(inputs)
-            
-            projects = list(api.projects(entity=entity))
-            project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
-            
-            inputs.enum(
-                "project",
-                [c.value for c in project_choices],
-                label="W&B Project",
-                required=True,
-                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"),
-                view=types.DropdownView()
-            )
-        else:
-            inputs.str(
-                "project",
-                label="W&B Project",
-                description="WandB project for logging predictions",
-                required=True,
-                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT")
-            )
+        try:
+            api = get_wandb_api(ctx)
+        except (ImportError, ValueError) as e:
+            inputs.view("error", types.Error(
+                label="Configuration Error",
+                description=str(e)
+            ))
+            return types.Property(inputs)
+        
+        projects = list(api.projects(entity=entity))
+        project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+        
+        inputs.enum(
+            "project",
+            [c.value for c in project_choices],
+            label="W&B Project",
+            required=True,
+            default=project,
+            view=types.DropdownView()
+        )
         
         # Artifact name (optional)
         inputs.str(

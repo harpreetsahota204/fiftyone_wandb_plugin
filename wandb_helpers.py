@@ -21,6 +21,53 @@ DEFAULT_WANDB_URL = "https://wandb.ai"
 
 
 # ===========================
+# Sanitization Helpers
+# ===========================
+
+def sanitize_for_artifact(name):
+    """Sanitize name for W&B artifact.
+    
+    W&B allows: alphanumeric, dashes, underscores, dots
+    
+    Args:
+        name: Name to sanitize
+        
+    Returns:
+        str: Sanitized name safe for W&B artifacts
+    """
+    import re
+    name = name.lower()
+    # Replace invalid chars with underscores
+    name = re.sub(r'[^a-z0-9\-_.]', '_', name)
+    # Collapse multiple underscores/dashes
+    name = re.sub(r'[_-]+', '_', name)
+    # Remove leading/trailing special chars
+    return name.strip('_-.')
+
+
+def sanitize_for_run_key(name):
+    """Sanitize name for FiftyOne run key.
+    
+    Run keys must be valid Python variable names: alphanumeric and underscores only.
+    
+    Args:
+        name: Name to sanitize
+        
+    Returns:
+        str: Sanitized name safe for FiftyOne run keys
+    """
+    import re
+    # Replace any non-alphanumeric character with underscore
+    name = re.sub(r'[^a-zA-Z0-9_]', '_', name)
+    # Remove leading digits or underscores (Python variables can't start with digit)
+    name = re.sub(r'^[0-9_]+', '', name)
+    # Collapse multiple underscores
+    name = re.sub(r'_+', '_', name)
+    # Remove trailing underscores
+    return name.strip('_')
+
+
+# ===========================
 # W&B Configuration Helpers
 # ===========================
 
@@ -123,18 +170,15 @@ def ensure_wandb_login(ctx):
         
     Raises:
         ImportError: If wandb is not installed
-        ValueError: If API key is not set
     """
     if not WANDB_AVAILABLE:
         raise ImportError("wandb is not installed. Install it with: pip install wandb")
     
     _, api_key, _ = get_credentials(ctx)
     
-    if not api_key:
-        raise ValueError("FIFTYONE_WANDB_API_KEY not set in secrets")
-    
-    # Login only once with relogin=False
-    wandb.login(key=api_key, relogin=False)
+    # Login only if API key provided (wandb will use cached login otherwise)
+    if api_key:
+        wandb.login(key=api_key, relogin=False)
 
 
 def get_wandb_api(ctx):

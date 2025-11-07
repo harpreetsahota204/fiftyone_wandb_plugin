@@ -7,7 +7,12 @@ enabling reproducibility and experiment tracking.
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
-from ..wandb_helpers import WANDB_AVAILABLE
+from ..wandb_helpers import (
+    WANDB_AVAILABLE,
+    get_credentials,
+    get_wandb_api,
+    prompt_for_missing_credentials,
+)
 
 try:
     import wandb
@@ -15,86 +20,16 @@ except ImportError:
     wandb = None
 
 
-def _get_credentials(ctx):
-    """Get W&B credentials from context.
-    
-    Checks both secrets and params (for temporary credentials entered via form).
-    
-    Returns:
-        tuple: (entity, api_key) where either value may be None
-    """
-    # First try secrets (persistent)
-    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
-    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
-    
-    # Fall back to params (temporary from form input)
-    if not entity:
-        entity = ctx.params.get("wandb_entity")
-    if not api_key:
-        api_key = ctx.params.get("wandb_api_key")
-    
-    return entity, api_key
-
-
-def _get_wandb_api(ctx):
-    """Get authenticated W&B API client.
-    
-    Handles login once and returns API client.
-    
-    Args:
-        ctx: Operator execution context
-        
-    Returns:
-        wandb.Api: Authenticated API client
-        
-    Raises:
-        ImportError: If wandb is not installed
-        ValueError: If required credentials are missing
-    """
-    if not WANDB_AVAILABLE:
-        raise ImportError("wandb not installed. Run: pip install wandb")
-    
-    entity, api_key = _get_credentials(ctx)
-    
-    if not entity:
-        raise ValueError("FIFTYONE_WANDB_ENTITY not set in secrets")
-    
-    # Login only if API key is provided
-    if api_key:
-        wandb.login(key=api_key, relogin=False)
-    
-    return wandb.Api()
-
-
-def _validate_execution_params(ctx):
-    """Validate parameters before execution.
-    
-    Args:
-        ctx: Operator execution context
-        
-    Raises:
-        ValueError: If required parameters are missing
-    """
-    if not ctx.params.get("project"):
-        raise ValueError("Missing required parameter: project")
-    
-    if not ctx.params.get("artifact"):
-        raise ValueError("Missing required parameter: artifact")
-
-
 def _load_view_from_wandb(ctx):
     """Load view from WandB artifact"""
     
-    # Validate parameters
-    _validate_execution_params(ctx)
+    # Get credentials and API client (handles login)
+    entity, _, _ = get_credentials(ctx)
+    api = get_wandb_api(ctx)
     
-    # Get authenticated API client (handles validation and login)
-    api = _get_wandb_api(ctx)
-    entity, _ = _get_credentials(ctx)
-    
-    # Get parameters
-    project = ctx.params.get("project")
-    artifact_name = ctx.params.get("artifact")
+    # Get parameters (UI enforces required=True, so these will be present)
+    project = ctx.params["project"]
+    artifact_name = ctx.params["artifact"]
     action = ctx.params.get("action", "apply_to_session")
     view_name = ctx.params.get("view_name")
     
@@ -138,90 +73,44 @@ class LoadViewFromWandB(foo.Operator):
     def resolve_input(self, ctx):
         inputs = types.Object()
         
-        # Check for credentials - always show fields if not in secrets
-        entity_from_secrets = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
-        api_key_from_secrets = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
+        # Prompt for credentials if missing
+        if not prompt_for_missing_credentials(ctx, inputs):
+            return types.Property(inputs)
         
-        # If credentials not in secrets, show input fields
-        if not entity_from_secrets or not api_key_from_secrets:
-            missing = []
-            
-            if not entity_from_secrets:
-                inputs.str(
-                    "wandb_entity",
-                    label="⚠️ W&B Entity (Required)",
-                    description="Your Weights & Biases team name or username",
-                    required=True,
-                )
-                missing.append("entity")
-            
-            if not api_key_from_secrets:
-                inputs.str(
-                    "wandb_api_key",
-                    label="⚠️ W&B API Key (Required)",
-                    description="Get your API key from https://wandb.ai/authorize. ⚠️ This will be visible as you type.",
-                    required=True,
-                )
-                missing.append("API key")
-            
-            inputs.view(
-                "credentials_warning",
-                types.Warning(
-                    label="Missing Credentials",
-                    description=(
-                        f"Missing: {', '.join(missing)}. Enter them below to proceed.\n\n"
-                        "💡 To avoid entering credentials each time:\n"
-                        "• Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY as environment variables\n"
-                        "• Or configure them in FiftyOne App Settings → Secrets (Enterprise/Teams)"
-                    )
-                )
-            )
+        # Get credentials and API
+        entity, api_key, project = get_credentials(ctx)
         
-        # Get credentials (from secrets or params)
-        entity, api_key = _get_credentials(ctx)
-        
-        # Only proceed if we have both credentials
-        if not entity or not api_key:
+        try:
+            api = get_wandb_api(ctx)
+        except (ImportError, ValueError) as e:
+            inputs.view("error", types.Error(
+                label="Configuration Error",
+                description=str(e)
+            ))
             return types.Property(inputs)
         
         # Project selector
-        if entity and api_key:
-            # Get authenticated API (handles login once)
-            try:
-                api = _get_wandb_api(ctx)
-            except (ImportError, ValueError) as e:
-                inputs.view("error", types.Error(
-                    label="Configuration Error",
-                    description=str(e)
-                ))
-                return types.Property(inputs)
-            
-            projects = list(api.projects(entity=entity))
-            project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
-            
-            inputs.enum(
-                "project",
-                [c.value for c in project_choices],
-                label="W&B Project",
-                required=True,
-                default=ctx.secrets.get("FIFTYONE_WANDB_PROJECT"),
-                view=types.DropdownView()
-            )
-        else:
-            inputs.str("project", label="W&B Project", required=True)
-            return types.Property(inputs)
+        projects = list(api.projects(entity=entity))
+        project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+        
+        inputs.enum(
+            "project",
+            [c.value for c in project_choices],
+            label="W&B Project",
+            required=True,
+            default=project,
+            view=types.DropdownView()
+        )
         
         # Artifact selector (dataset artifacts only)  
-        project = ctx.params.get("project")
-        if project:
-            # Reuse the API client from above (already authenticated)
-            runs = api.runs(path=f"{entity}/{project}")
+        selected_project = ctx.params.get("project")
+        if selected_project:
+            runs = api.runs(path=f"{entity}/{selected_project}")
             artifact_names = set()
             
             for run in runs:
                 for artifact in run.logged_artifacts():
                     if artifact.type == "dataset":
-                        # Use the artifact name exactly as it appears in WandB
                         artifact_names.add(artifact.name)
             
             artifact_choices = [
@@ -248,10 +137,9 @@ class LoadViewFromWandB(foo.Operator):
             return types.Property(inputs)
         
         # Show artifact info
-        artifact_name = ctx.params.get("artifact")
-        if artifact_name:
-            # Reuse the API client (already authenticated)
-            full_artifact_path = f"{entity}/{project}/{artifact_name}"
+        selected_artifact = ctx.params.get("artifact")
+        if selected_artifact and selected_project:
+            full_artifact_path = f"{entity}/{selected_project}/{selected_artifact}"
             artifact = api.artifact(full_artifact_path)
             num_samples = artifact.metadata.get("num_samples", 0)
             dataset_name = artifact.metadata.get("fiftyone_dataset_name", "unknown")
