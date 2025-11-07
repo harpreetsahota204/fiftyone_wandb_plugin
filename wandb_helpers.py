@@ -109,28 +109,41 @@ def prompt_for_missing_credentials(ctx, inputs):
     Returns:
         bool: True if all required credentials are present, False otherwise
     """
-    entity, api_key, project = get_credentials(ctx)
-    missing = []
+    # Check secrets first (persistent credentials)
+    entity_secret = ctx.secrets.get("FIFTYONE_WANDB_ENTITY")
+    api_key_secret = ctx.secrets.get("FIFTYONE_WANDB_API_KEY")
     
-    if not entity:
-        inputs.str(
-            "wandb_entity",
-            label="⚠️ W&B Entity (Required)",
-            description="Your Weights & Biases team name or username",
-            required=True,
-        )
-        missing.append("entity")
+    # Check params (temporary form input)
+    entity_param = ctx.params.get("wandb_entity")
+    api_key_param = ctx.params.get("wandb_api_key")
     
-    if not api_key:
-        inputs.str(
-            "wandb_api_key",
-            label="⚠️ W&B API Key (Required)",
-            description="Get your API key from https://wandb.ai/authorize. ⚠️ This will be visible as you type.",
-            required=True,
-        )
-        missing.append("API key")
+    # Determine if we need to show credential inputs
+    needs_entity = not entity_secret
+    needs_api_key = not api_key_secret
     
-    if missing:
+    # If user is entering credentials via form, show the inputs but don't proceed
+    # until BOTH are provided (to avoid partial credential states)
+    if needs_entity or needs_api_key:
+        missing = []
+        
+        if needs_entity:
+            inputs.str(
+                "wandb_entity",
+                label="⚠️ W&B Entity (Required)",
+                description="Your Weights & Biases team name or username",
+                required=True,
+            )
+            missing.append("entity")
+        
+        if needs_api_key:
+            inputs.str(
+                "wandb_api_key",
+                label="⚠️ W&B API Key (Required)",
+                description="Get your API key from https://wandb.ai/authorize. ⚠️ This will be visible as you type.",
+                required=True,
+            )
+            missing.append("API key")
+        
         inputs.view(
             "credentials_warning",
             types.Warning(
@@ -143,8 +156,18 @@ def prompt_for_missing_credentials(ctx, inputs):
                 )
             )
         )
-        return False
+        
+        # Only proceed if BOTH credentials are now provided via params
+        # This prevents trying to make API calls with partial credentials while typing
+        if needs_entity and not entity_param:
+            return False  # Entity input field shown but not filled yet
+        if needs_api_key and not api_key_param:
+            return False  # API key input field shown but not filled yet
+        
+        # Both fields have been filled in the form, we can proceed
+        return True
     
+    # All credentials available from secrets
     return True
 
 
