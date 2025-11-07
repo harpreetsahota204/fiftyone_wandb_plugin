@@ -478,9 +478,18 @@ def _log_model_predictions(ctx):
     run_config.total_predictions = len(all_label_ids)
     run_config.inference_timestamp = datetime.now().isoformat()
     
-    # Sanitize run key
-    run_key = f"inference_{model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    run_key = run_key.replace("-", "_").replace(".", "_").replace(" ", "_")
+    # Sanitize run key - must be a valid Python variable name
+    import re
+    # Replace any non-alphanumeric character with underscore
+    safe_model_name = re.sub(r'[^a-zA-Z0-9_]', '_', model_name)
+    # Remove leading digits or underscores (Python variables can't start with digit)
+    safe_model_name = re.sub(r'^[0-9_]+', '', safe_model_name)
+    # Remove multiple consecutive underscores
+    safe_model_name = re.sub(r'_+', '_', safe_model_name)
+    # Remove trailing underscores
+    safe_model_name = safe_model_name.strip('_')
+    
+    run_key = f"inference_{safe_model_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     dataset.register_run(run_key, run_config)
     
     return {
