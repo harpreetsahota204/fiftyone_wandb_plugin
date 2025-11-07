@@ -491,7 +491,14 @@ class LogModelPredictions(foo.Operator):
                 self.dataset = dataset
                 self.params = params
                 self._target_view = view
-                self.secrets = {}  # Empty dict, will fall back to os.getenv()
+            
+            @property
+            def secrets(self):
+                # Return a dict-like object that falls back to os.environ
+                class SecretsDict(dict):
+                    def get(self, key, default=None):
+                        return os.getenv(key, default)
+                return SecretsDict()
             
             def target_view(self):
                 return self._target_view

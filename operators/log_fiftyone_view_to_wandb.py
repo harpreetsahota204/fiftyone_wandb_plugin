@@ -435,7 +435,14 @@ class LogFiftyOneViewToWandB(foo.Operator):
                 self.view = view
                 self.dataset = dataset
                 self.params = params
-                self.secrets = {}  # Empty dict, will fall back to os.getenv()
+            
+            @property
+            def secrets(self):
+                # Return a dict-like object that falls back to os.environ
+                class SecretsDict(dict):
+                    def get(self, key, default=None):
+                        return os.getenv(key, default)
+                return SecretsDict()
             
             def target_view(self):
                 return self.view
