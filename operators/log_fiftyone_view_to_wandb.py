@@ -435,9 +435,10 @@ class LogFiftyOneViewToWandB(foo.Operator):
                 self.view = view
                 self.dataset = dataset
                 self.params = params
+                self.secrets = {}  # Empty dict, will fall back to os.getenv()
             
-            def secret(self, name):
-                return os.environ.get(name)
+            def target_view(self):
+                return self.view
         
         ctx = MockContext(view, dataset, {
             "project": project,
