@@ -390,8 +390,8 @@ def _log_model_predictions(ctx):
     artifact.add(table, "predictions")
     
     # 7. Upload to WandB
-    entity = ctx.secret("FIFTYONE_WANDB_ENTITY")
-    api_key = ctx.secret("FIFTYONE_WANDB_API_KEY")
+    entity = ctx.secrets.get("FIFTYONE_WANDB_ENTITY") or os.getenv("FIFTYONE_WANDB_ENTITY")
+    api_key = ctx.secrets.get("FIFTYONE_WANDB_API_KEY") or os.getenv("FIFTYONE_WANDB_API_KEY")
     
     # Login to WandB first
     if api_key:
