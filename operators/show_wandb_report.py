@@ -1,7 +1,8 @@
 """Show W&B Report operator.
 
-This operator displays W&B reports embedded in the FiftyOne App,
-allowing users to view custom reports without leaving FiftyOne.
+This operator displays W&B reports in the FiftyOne App by leveraging
+a workaround: W&B allows embedding runs but not reports directly, so we
+load a run from the project and provide the report URL for navigation.
 """
 
 import fiftyone.operators as foo
@@ -25,8 +26,8 @@ class ShowWandBReport(foo.Operator):
             icon = "/assets/wandb.svg",
             dynamic=True,
             description=(
-                "View a W&B report embedded in FiftyOne. "
-                "Reports can be embedded unlike the main dashboard."
+                "View W&B reports in FiftyOne. Opens a run from the project, "
+                "then you can navigate to the report within the W&B interface."
             ),
         )
 
@@ -102,9 +103,23 @@ class ShowWandBReport(foo.Operator):
                 "report_label",
                 report_choices.values(),
                 label="Select Report",
-                description="Choose a W&B report to embed",
+                description="Choose a report. We'll load a run from this project, then you can navigate to the report.",
                 required=True,
                 view=types.DropdownView(),
+            )
+            
+            # Add helpful notice about the workaround
+            inputs.view(
+                "report_info",
+                types.Notice(
+                    label="💡 How This Works",
+                    description=(
+                        "W&B doesn't allow direct report embedding, but we can work around this:\n"
+                        "1. We'll load a recent run from this project\n"
+                        "2. Once loaded, use W&B's navigation to access your report\n"
+                        "3. The report URL will be shown below for easy reference"
+                    )
+                )
             )
             
         except Exception as e:
@@ -119,51 +134,66 @@ class ShowWandBReport(foo.Operator):
         return types.Property(inputs)
 
     def execute(self, ctx):
-        # Get selected report label
+        # Get selected report label and find the report URL
         report_label = ctx.params.get("report_label", None)
         report_url = None
+        run_url = None
         
-        if report_label:
-            # Fetch reports again to find the URL matching the label
-            entity, _, project = get_credentials(ctx)
-            project_name = project
-            
-            if entity and project_name:
-                try:
-                    api = get_wandb_api(ctx)
-                    reports = list(api.reports(path=f"{entity}/{project_name}", per_page=100))
+        entity, _, _ = get_credentials(ctx)
+        project_name = ctx.params.get("project_name")
+        
+        if report_label and entity and project_name:
+            try:
+                api = get_wandb_api(ctx)
+                
+                # Find the report URL
+                reports = list(api.reports(path=f"{entity}/{project_name}", per_page=100))
+                for report in reports:
+                    display_name = report.display_name or report.name
+                    if report.description:
+                        desc = report.description[:250] + "..." if len(report.description) > 250 else report.description
+                        label = f"{display_name} - {desc}"
+                    else:
+                        label = f"{display_name} - No description provided"
                     
-                    # Find the report that matches the label
-                    for report in reports:
-                        display_name = report.display_name or report.name
-                        if report.description:
-                            desc = report.description[:250] + "..." if len(report.description) > 250 else report.description
-                            label = f"{display_name} - {desc}"
-                        else:
-                            label = f"{display_name} - No description provided"
-                        
-                        if label == report_label:
-                            report_url = report.url
-                            break
-                except Exception as e:
-                    print(f"Error fetching reports: {e}")
+                    if label == report_label:
+                        report_url = report.url
+                        break
+                
+                # Get a recent run from the project to use as entry point
+                runs = list(api.runs(path=f"{entity}/{project_name}", per_page=5))
+                if runs:
+                    run_url = runs[0].url
+                else:
+                    # No runs available, fallback to project overview
+                    run_url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
+                    
+            except Exception as e:
+                print(f"Error fetching data: {e}")
+                run_url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
         
-        # Fallback if no report URL found
-        if not report_url:
-            entity, _, project = get_credentials(ctx)
-            entity = ctx.params.get("entity") or entity
-            project_name = ctx.params.get("project_name") or project
-            
+        # Fallback URLs if something went wrong
+        if not run_url:
             if entity and project_name:
-                # Open the reports page for the project
+                run_url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
+            else:
+                run_url = DEFAULT_WANDB_URL
+        
+        if not report_url:
+            if entity and project_name:
                 report_url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}/reports"
             else:
                 report_url = DEFAULT_WANDB_URL
         
-        # Trigger the panel to embed the report
+        # Show the report URL to user for reference
+        print(f"📊 Report URL: {report_url}")
+        print(f"🚀 Loading via run: {run_url}")
+        print(f"💡 Once loaded, navigate to Reports in W&B to access: {report_url}")
+        
+        # Load the run URL (which W&B allows to embed)
         ctx.trigger(
             "@harpreetsahota/wandb/embed_report",
-            params=dict(url=report_url),
+            params=dict(url=run_url),
         )
         
         # Open the panel
