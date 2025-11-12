@@ -39,31 +39,34 @@ class OpenWandBPanel(foo.Operator):
         entity, _, project_name = get_credentials(ctx)
         url = None
         
-        # Try to get a run URL (embeddable) instead of project/homepage (not embeddable)
         if entity and project_name:
             try:
                 api = get_wandb_api(ctx)
+                
+                # Get a recent run from the project to use as entry point
                 runs = list(api.runs(path=f"{entity}/{project_name}", per_page=1))
                 if runs:
                     url = runs[0].url
-                    print(f"🚀 Loading W&B run: {url}")
                 else:
-                    print(f"⚠️ No runs found in {entity}/{project_name}")
-                    print(f"💡 Create a run in W&B first, or the panel may not embed properly")
+                    # No runs available, fallback to project overview
+                    url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
+                    
             except Exception as e:
-                print(f"⚠️ Could not fetch runs: {e}")
-                print(f"💡 Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY to enable embedding")
-        else:
-            print(f"⚠️ W&B credentials not configured")
-            print(f"💡 Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY environment variables")
+                print(f"Error fetching runs: {e}")
+                url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
         
-        # If no run URL found, inform user and don't open panel
+        # Fallback URLs if something went wrong
         if not url:
-            print(f"❌ Cannot open W&B panel: No embeddable run URL available")
-            print(f"💡 Either configure credentials or use 'Show W&B Run' operator instead")
-            return
+            if entity and project_name:
+                url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
+            else:
+                url = DEFAULT_WANDB_URL
         
-        # Load the run URL in the panel
+        # Show what we're loading
+        print(f"🚀 Loading W&B: {url}")
+        print(f"💡 Once loaded, you can navigate to Reports, Artifacts, and other sections within W&B")
+        
+        # Load the URL in the panel
         ctx.trigger(
             "@harpreetsahota/wandb/embed_report",
             params=dict(url=url),
