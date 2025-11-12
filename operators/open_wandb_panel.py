@@ -6,7 +6,12 @@ This operator opens the W&B panel in the FiftyOne App.
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
-from ..wandb_helpers import DEFAULT_WANDB_URL, get_credentials, get_project_url
+from ..wandb_helpers import (
+    DEFAULT_WANDB_URL,
+    get_credentials,
+    get_project_url,
+    get_wandb_api,
+)
 
 
 class OpenWandBPanel(foo.Operator):
@@ -32,9 +37,24 @@ class OpenWandBPanel(foo.Operator):
 
     def execute(self, ctx):
         # Use credentials to construct URL
-        _, _, project_name = get_credentials(ctx)
+        entity, _, project_name = get_credentials(ctx)
         
-        if project_name:
+        # Try to load a recent run from the project (more likely to embed successfully)
+        if entity and project_name:
+            try:
+                api = get_wandb_api(ctx)
+                runs = list(api.runs(path=f"{entity}/{project_name}", per_page=1))
+                if runs:
+                    # Use the most recent run URL
+                    url = runs[0].url
+                else:
+                    # No runs, fallback to project URL
+                    url = get_project_url(ctx, project_name)
+            except Exception as e:
+                # If API call fails, fallback to project URL
+                print(f"Could not fetch runs, using project URL: {e}")
+                url = get_project_url(ctx, project_name)
+        elif project_name:
             url = get_project_url(ctx, project_name)
         else:
             url = DEFAULT_WANDB_URL
