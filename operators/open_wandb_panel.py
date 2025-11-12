@@ -36,36 +36,40 @@ class OpenWandBPanel(foo.Operator):
         )
 
     def execute(self, ctx):
-        # Use credentials to construct URL
         entity, _, project_name = get_credentials(ctx)
+        url = None
         
-        # Try to load a recent run from the project (more likely to embed successfully)
+        # Try to get a run URL (embeddable) instead of project/homepage (not embeddable)
         if entity and project_name:
             try:
                 api = get_wandb_api(ctx)
                 runs = list(api.runs(path=f"{entity}/{project_name}", per_page=1))
                 if runs:
-                    # Use the most recent run URL
                     url = runs[0].url
+                    print(f"🚀 Loading W&B run: {url}")
                 else:
-                    # No runs, fallback to project URL
-                    url = get_project_url(ctx, project_name)
+                    print(f"⚠️ No runs found in {entity}/{project_name}")
+                    print(f"💡 Create a run in W&B first, or the panel may not embed properly")
             except Exception as e:
-                # If API call fails, fallback to project URL
-                print(f"Could not fetch runs, using project URL: {e}")
-                url = get_project_url(ctx, project_name)
-        elif project_name:
-            url = get_project_url(ctx, project_name)
+                print(f"⚠️ Could not fetch runs: {e}")
+                print(f"💡 Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY to enable embedding")
         else:
-            url = DEFAULT_WANDB_URL
+            print(f"⚠️ W&B credentials not configured")
+            print(f"💡 Set FIFTYONE_WANDB_ENTITY and FIFTYONE_WANDB_API_KEY environment variables")
         
-        # Set the URL in the panel
+        # If no run URL found, inform user and don't open panel
+        if not url:
+            print(f"❌ Cannot open W&B panel: No embeddable run URL available")
+            print(f"💡 Either configure credentials or use 'Show W&B Run' operator instead")
+            return
+        
+        # Load the run URL in the panel
         ctx.trigger(
             "@harpreetsahota/wandb/embed_report",
             params=dict(url=url),
         )
         
-        # Open the panel in the FiftyOne App
+        # Open the panel
         ctx.trigger(
             "open_panel",
             params=dict(name="WandBPanel", layout="horizontal", isActive=True),
