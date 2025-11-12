@@ -2,6 +2,9 @@
 
 **Track your computer vision experiments with complete data-model lineage.**
 
+![Show W&B Panel](assets/show_wandb_panel.gif)
+
+
 This plugin connects [FiftyOne](https://docs.voxel51.com/) datasets with [Weights & Biases](https://wandb.ai/) to enable reproducible, data-centric ML workflows.
 
 ## What You Can Do
@@ -11,6 +14,9 @@ This plugin connects [FiftyOne](https://docs.voxel51.com/) datasets with [Weight
 - ✅ **Track VLM outputs** - Special support for vision-language model workflows
 - ✅ **Reproduce experiments** - Recreate exact training views from WandB artifacts
 - ✅ **Compare strategies** - A/B test data curation, model versions, and prompting approaches
+
+![Show W&B Run](assets/show_wandb_run.gif)
+
 
 ---
 
@@ -53,6 +59,9 @@ Get your API key at [wandb.ai/authorize](https://wandb.ai/authorize).
 
 ### 1. Track Training Data
 
+![Log View to WandB](assets/log_view_to_wandb.gif)
+
+
 ```python
 import fiftyone as fo
 import fiftyone.operators as foo
@@ -85,6 +94,9 @@ wandb.finish()
 - Thumbnail images in interactive WandB Tables
 
 ### 2. Track Model Predictions
+
+![Log Predictions to WandB](assets/log_predictions_to_wandb.gif)
+
 
 ```python
 import fiftyone.zoo as foz
@@ -315,6 +327,10 @@ All operators have interactive UIs in the FiftyOne App:
 
 ### Recreate Training Data
 
+![Load View from WandB](assets/load_view_from_wandb.gif)
+
+
+
 Every training view is stored with sample IDs in WandB metadata. You can recreate views either manually or using the plugin operator:
 
 **Option 1: Using the Plugin Operator (Recommended)**
@@ -452,6 +468,9 @@ To keep artifacts small:
 ---
 
 ## Plugin Operators
+
+![Show W&B Report](assets/show_wandb_report.gif)
+
 
 The plugin provides these operators (accessible via Python or FiftyOne App):
 
