@@ -59,8 +59,15 @@ class OpenWandBPanel(foo.Operator):
         else:
             url = DEFAULT_WANDB_URL
         
+        # Set the URL in the panel
         ctx.trigger(
-            "@harpreetsahota/wandb/set_wandb_url",
+            "@harpreetsahota/wandb/embed_report",
             params=dict(url=url),
+        )
+        
+        # Open the panel in the FiftyOne App
+        ctx.trigger(
+            "open_panel",
+            params=dict(name="WandBPanel", layout="horizontal", isActive=True),
         )
 
