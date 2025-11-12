@@ -11,6 +11,7 @@ from ..wandb_helpers import (
     get_credentials,
     get_project_url,
     get_wandb_api,
+    prompt_for_missing_credentials,
 )
 
 
@@ -21,6 +22,7 @@ class OpenWandBPanel(foo.Operator):
             name="open_wandb_panel",
             label="Open W&B Panel",
             unlisted=False,
+            dynamic=True,
         )
         _config.icon = "/assets/wandb.svg"
         return _config
@@ -30,13 +32,62 @@ class OpenWandBPanel(foo.Operator):
             types.Places.SAMPLES_GRID_SECONDARY_ACTIONS,
             types.Button(
                 label="Open W&B Panel",
-                prompt=False,
+                prompt=True,
                 icon="/assets/wandb.svg",
             ),
         )
+    
+    def resolve_input(self, ctx):
+        inputs = types.Object()
+        
+        # Check for credentials and prompt if missing
+        if not prompt_for_missing_credentials(ctx, inputs):
+            return types.Property(inputs)
+        
+        # Get credentials and API
+        entity, _, project = get_credentials(ctx)
+        
+        try:
+            api = get_wandb_api(ctx)
+        except (ImportError, ValueError) as e:
+            inputs.view("error", types.Error(
+                label="Configuration Error",
+                description=str(e)
+            ))
+            return types.Property(inputs)
+        
+        # Fetch projects from W&B
+        projects = list(api.projects(entity=entity))
+        project_choices = [types.Choice(label=p.name, value=p.name) for p in projects]
+        
+        inputs.enum(
+            "project_name",
+            [c.value for c in project_choices],
+            label="W&B Project",
+            required=True,
+            default=project,
+            view=types.DropdownView()
+        )
+        
+        # Add helpful notice about how it works
+        inputs.view(
+            "panel_info",
+            types.Notice(
+                label="💡 How This Works",
+                description=(
+                    "We'll open a W&B panel in FiftyOne:\n"
+                    "1. We'll load a recent run from your project\n"
+                    "2. Once loaded, navigate within W&B to view Reports, Artifacts, etc.\n"
+                    "3. The panel stays open so you can explore your W&B workspace"
+                )
+            )
+        )
+        
+        return types.Property(inputs)
 
     def execute(self, ctx):
-        entity, _, project_name = get_credentials(ctx)
+        entity, _, _ = get_credentials(ctx)
+        project_name = ctx.params.get("project_name")
         url = None
         
         if entity and project_name:
