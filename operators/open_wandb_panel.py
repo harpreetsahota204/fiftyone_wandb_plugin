@@ -100,21 +100,18 @@ class OpenWandBPanel(foo.Operator):
                     url = runs[0].url
                 else:
                     # No runs available, fallback to project overview
-                    base_url = get_wandb_base_url(ctx)
-                    url = f"{base_url}/{entity}/{project_name}"
+                    url = get_project_url(ctx, project_name)
                     
             except Exception as e:
                 print(f"Error fetching runs: {e}")
-                base_url = get_wandb_base_url(ctx)
-                url = f"{base_url}/{entity}/{project_name}"
+                url = get_project_url(ctx, project_name)
         
         # Fallback URLs if something went wrong
         if not url:
-            base_url = get_wandb_base_url(ctx)
             if entity and project_name:
-                url = f"{base_url}/{entity}/{project_name}"
+                url = get_project_url(ctx, project_name)
             else:
-                url = base_url
+                url = get_wandb_base_url(ctx)
         
         # Show what we're loading
         print(f"🚀 Loading W&B: {url}")

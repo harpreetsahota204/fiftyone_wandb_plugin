@@ -10,6 +10,7 @@ import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
     get_credentials,
+    get_project_url,
     get_wandb_api,
     get_wandb_base_url,
     prompt_for_missing_credentials,
@@ -166,27 +167,24 @@ class ShowWandBReport(foo.Operator):
                     run_url = runs[0].url
                 else:
                     # No runs available, fallback to project overview
-                    base_url = get_wandb_base_url(ctx)
-                    run_url = f"{base_url}/{entity}/{project_name}"
+                    run_url = get_project_url(ctx, project_name)
                     
             except Exception as e:
                 print(f"Error fetching data: {e}")
-                base_url = get_wandb_base_url(ctx)
-                run_url = f"{base_url}/{entity}/{project_name}"
+                run_url = get_project_url(ctx, project_name)
         
         # Fallback URLs if something went wrong
-        base_url = get_wandb_base_url(ctx)
         if not run_url:
             if entity and project_name:
-                run_url = f"{base_url}/{entity}/{project_name}"
+                run_url = get_project_url(ctx, project_name)
             else:
-                run_url = base_url
+                run_url = get_wandb_base_url(ctx)
         
         if not report_url:
             if entity and project_name:
-                report_url = f"{base_url}/{entity}/{project_name}/reports"
+                report_url = f"{get_project_url(ctx, project_name)}/reports"
             else:
-                report_url = base_url
+                report_url = get_wandb_base_url(ctx)
         
         # Show the report URL to user for reference
         print(f"📊 Report URL: {report_url}")
