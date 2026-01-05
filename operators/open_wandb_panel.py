@@ -7,10 +7,10 @@ import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
-    DEFAULT_WANDB_URL,
     get_credentials,
     get_project_url,
     get_wandb_api,
+    get_wandb_base_url,
     prompt_for_missing_credentials,
 )
 
@@ -100,18 +100,21 @@ class OpenWandBPanel(foo.Operator):
                     url = runs[0].url
                 else:
                     # No runs available, fallback to project overview
-                    url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
+                    base_url = get_wandb_base_url(ctx)
+                    url = f"{base_url}/{entity}/{project_name}"
                     
             except Exception as e:
                 print(f"Error fetching runs: {e}")
-                url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
+                base_url = get_wandb_base_url(ctx)
+                url = f"{base_url}/{entity}/{project_name}"
         
         # Fallback URLs if something went wrong
         if not url:
+            base_url = get_wandb_base_url(ctx)
             if entity and project_name:
-                url = f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
+                url = f"{base_url}/{entity}/{project_name}"
             else:
-                url = DEFAULT_WANDB_URL
+                url = base_url
         
         # Show what we're loading
         print(f"🚀 Loading W&B: {url}")

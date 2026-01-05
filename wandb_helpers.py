@@ -95,6 +95,33 @@ def get_credentials(ctx):
     return entity, api_key, project
 
 
+def get_wandb_base_url(ctx):
+    """Get the W&B base URL.
+    
+    Checks for custom URL in secrets/params for hosted/managed deployments,
+    falling back to the default https://wandb.ai.
+    
+    Args:
+        ctx: Operator execution context
+        
+    Returns:
+        str: W&B base URL (without trailing slash)
+    """
+    # First try secrets (persistent)
+    url = ctx.secrets.get("FIFTYONE_WANDB_URL")
+    
+    # Fall back to params (temporary from form input)
+    if not url:
+        url = ctx.params.get("wandb_url")
+    
+    # Fall back to default
+    if not url:
+        url = DEFAULT_WANDB_URL
+    
+    # Ensure no trailing slash for consistent URL construction
+    return url.rstrip("/")
+
+
 def prompt_for_missing_credentials(ctx, inputs):
     """Add credential input fields if missing credentials are detected.
     
@@ -275,13 +302,18 @@ def get_wandb_run(ctx, project_name, run_id=None, run_name=None):
 
 
 def get_project_url(ctx, project_name):
-    """Construct W&B project URL"""
+    """Construct W&B project URL.
+    
+    Uses custom W&B URL if FIFTYONE_WANDB_URL is set (for hosted/managed deployments),
+    otherwise falls back to https://wandb.ai.
+    """
     config = get_wandb_config(ctx)
     entity = config["entity"]
     if not entity:
         api = get_wandb_api(ctx)
         entity = api.default_entity
-    return f"{DEFAULT_WANDB_URL}/{entity}/{project_name}"
+    base_url = get_wandb_base_url(ctx)
+    return f"{base_url}/{entity}/{project_name}"
 
 
 def get_run_url(ctx, project_name, run_id):
@@ -573,6 +605,7 @@ def create_mock_context(view, dataset, params):
                 "FIFTYONE_WANDB_API_KEY": os.getenv("FIFTYONE_WANDB_API_KEY"),
                 "FIFTYONE_WANDB_ENTITY": os.getenv("FIFTYONE_WANDB_ENTITY"),
                 "FIFTYONE_WANDB_PROJECT": os.getenv("FIFTYONE_WANDB_PROJECT"),
+                "FIFTYONE_WANDB_URL": os.getenv("FIFTYONE_WANDB_URL"),
             }
         
         def target_view(self):

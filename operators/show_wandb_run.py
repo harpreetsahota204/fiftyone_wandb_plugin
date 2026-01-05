@@ -8,9 +8,9 @@ import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
-    DEFAULT_WANDB_URL,
     get_credentials,
     get_wandb_api,
+    get_wandb_base_url,
     get_project_url,
     prompt_for_missing_credentials,
     WANDB_AVAILABLE,
@@ -166,7 +166,7 @@ class ShowWandBRun(foo.Operator):
             if entity and project_name:
                 url = get_project_url(ctx, project_name)
             else:
-                url = DEFAULT_WANDB_URL
+                url = get_wandb_base_url(ctx)
         
         # Embed W&B run in iframe (runs CAN be embedded unlike main dashboard)
         ctx.trigger(
