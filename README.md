@@ -43,10 +43,13 @@ Set your WandB credentials as environment variables:
 ```bash
 # Required
 export FIFTYONE_WANDB_API_KEY="your-api-key-here"
+export FIFTYONE_WANDB_ENTITY="your-entity-name"
 
 # Optional (can also specify per-operation)
-export FIFTYONE_WANDB_ENTITY="your-username-or-team"
-export FIFTYONE_WANDB_PROJECT="your-default-project"
+export FIFTYONE_WANDB_PROJECT="your-project"
+
+# Optional: Custom W&B URL for hosted/managed deployments (defaults to https://wandb.ai)
+export FIFTYONE_WANDB_URL="https://your-custom-url.com"
 ```
 
 Get your API key at [wandb.ai/authorize](https://wandb.ai/authorize).
