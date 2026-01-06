@@ -26,6 +26,7 @@ secrets:
   - FIFTYONE_WANDB_API_KEY
   - FIFTYONE_WANDB_ENTITY
   - FIFTYONE_WANDB_PROJECT
+  - FIFTYONE_WANDB_URL
 
 dependencies:
   - fiftyone
