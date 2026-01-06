@@ -322,6 +322,22 @@ def get_run_url(ctx, project_name, run_id):
     return f"{project_url}/runs/{run_id}"
 
 
+def get_report_url(ctx, project_name, report):
+    """Construct W&B report URL.
+    
+    Args:
+        ctx: Operator execution context
+        project_name: W&B project name
+        report: W&B report object (with name and id attributes)
+        
+    Returns:
+        str: Constructed report URL respecting FIFTYONE_WANDB_URL
+    """
+    project_url = get_project_url(ctx, project_name)
+    # W&B report URLs are: {project}/reports/{report-name}--{report-id}
+    return f"{project_url}/reports/{report.name}--{report.id}"
+
+
 def format_run_name(run_name):
     """Format run name for FiftyOne (replace hyphens with underscores)"""
     return run_name.replace("-", "_")
