@@ -11,6 +11,8 @@ import fiftyone.operators.types as types
 from ..wandb_helpers import (
     get_credentials,
     get_project_url,
+    get_report_url,
+    get_run_url,
     get_wandb_api,
     prompt_for_missing_credentials,
 )
@@ -141,10 +143,11 @@ class ShowWandBReport(foo.Operator):
         report_url = None
         run_url = None
         
+        # Note: We construct URLs ourselves to respect FIFTYONE_WANDB_URL setting
         try:
             api = get_wandb_api(ctx)
             
-            # Find the report URL
+            # Find the report and construct URL ourselves
             reports = list(api.reports(path=f"{entity}/{project_name}", per_page=100))
             for report in reports:
                 display_name = report.display_name or report.name
@@ -155,13 +158,13 @@ class ShowWandBReport(foo.Operator):
                     label = f"{display_name} - No description provided"
                 
                 if label == report_label:
-                    report_url = report.url
+                    report_url = get_report_url(ctx, project_name, report)
                     break
             
             # Get a recent run to use as entry point (W&B embeds runs better)
             runs = list(api.runs(path=f"{entity}/{project_name}", per_page=5))
             if runs:
-                run_url = runs[0].url
+                run_url = get_run_url(ctx, project_name, runs[0].id)
                 
         except Exception as e:
             print(f"Error fetching data: {e}")

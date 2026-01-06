@@ -9,6 +9,7 @@ import fiftyone.operators.types as types
 from ..wandb_helpers import (
     get_credentials,
     get_project_url,
+    get_run_url,
     get_wandb_api,
     prompt_for_missing_credentials,
 )
@@ -90,12 +91,13 @@ class OpenWandBPanel(foo.Operator):
         project_name = ctx.params["project_name"]  # Required field
         
         # Try to get a recent run URL (W&B embeds runs better than project pages)
+        # Note: We construct URL ourselves to respect FIFTYONE_WANDB_URL setting
         url = None
         try:
             api = get_wandb_api(ctx)
             runs = list(api.runs(path=f"{entity}/{project_name}", per_page=1))
             if runs:
-                url = runs[0].url
+                url = get_run_url(ctx, project_name, runs[0].id)
         except Exception as e:
             print(f"Error fetching runs: {e}")
         

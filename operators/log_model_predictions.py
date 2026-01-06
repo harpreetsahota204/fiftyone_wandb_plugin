@@ -19,6 +19,7 @@ import fiftyone.zoo as foz
 from ..wandb_helpers import (
     create_mock_context,
     get_credentials,
+    get_run_url,
     get_wandb_api,
     is_vlm_output,
     parse_model_config,
@@ -410,7 +411,9 @@ def _log_model_predictions(ctx):
             "predictions_field": pred_field,
             "samples_processed": len(view),
         })
-        wandb_url = run.url
+    
+    # Construct URL ourselves to respect FIFTYONE_WANDB_URL setting
+    wandb_url = get_run_url(ctx, project_name, run_id)
     
     # 8. Register in FiftyOne
     run_config = dataset.init_run()

@@ -9,8 +9,9 @@ import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
     get_credentials,
-    get_wandb_api,
     get_project_url,
+    get_run_url,
+    get_wandb_api,
     prompt_for_missing_credentials,
 )
 
@@ -132,6 +133,7 @@ class ShowWandBRun(foo.Operator):
         url = None
         
         # Try to get specific run URL if user selected one
+        # Note: We construct URL ourselves to respect FIFTYONE_WANDB_URL setting
         if run_label:
             try:
                 api = get_wandb_api(ctx)
@@ -151,7 +153,7 @@ class ShowWandBRun(foo.Operator):
                         pass
                     
                     if label == run_label:
-                        url = run.url
+                        url = get_run_url(ctx, project_name, run.id)
                         break
             except Exception as e:
                 print(f"Error fetching runs: {e}")
