@@ -15,26 +15,13 @@ from ..wandb_helpers import (
 )
 
 
-def _load_view_from_wandb(ctx, return_view=False):
-    """Load view from WandB artifact.
-    
-    Args:
-        ctx: Execution context with dataset and params
-        return_view: If True, return the view object (for programmatic use).
-                    If False, trigger session update (for UI use).
-    
-    Returns:
-        dict: Result with samples_loaded, artifact_name, and optionally view_name
-        If return_view=True, also includes 'view' key with the FiftyOne view
-        
-    Raises:
-        ValueError: If artifact doesn't contain sample_ids metadata
-    """
+def _load_view_from_wandb(ctx):
+    """Load view from WandB artifact (UI context)."""
     # Get credentials and API client (handles login and validation)
     entity, _, _ = get_credentials(ctx)
     api = get_wandb_api(ctx)
     
-    # Get parameters
+    # Get parameters (UI enforces required=True, so these will be present)
     project_name = ctx.params["project"]
     artifact_name = ctx.params["artifact"]
     action = ctx.params.get("action", "apply_to_session")
@@ -44,37 +31,26 @@ def _load_view_from_wandb(ctx, return_view=False):
     artifact = api.artifact(f"{entity}/{project_name}/{artifact_name}")
     
     # Get sample IDs from metadata
-    sample_ids = artifact.metadata.get("sample_ids")
-    if not sample_ids:
-        raise ValueError(
-            f"Artifact '{artifact_name}' does not contain sample_ids metadata. "
-            "This artifact may not have been created by the W&B plugin."
-        )
+    sample_ids = artifact.metadata["sample_ids"]
     
     # Recreate view
     dataset = ctx.dataset
     view = dataset.select(sample_ids)
     
-    # Apply to session (UI context only)
-    if not return_view and action in ["apply_to_session", "both"]:
+    # Apply to session
+    if action in ["apply_to_session", "both"]:
         ctx.trigger("set_view", params={"view": view._serialize()})
     
     # Save as named view
     if action in ["save_as_view", "both"] and view_name:
         dataset.save_view(view_name, view)
     
-    result = {
+    return {
         "success": True,
         "samples_loaded": len(view),
         "view_name": view_name if action != "apply_to_session" else None,
         "artifact_name": artifact_name,
     }
-    
-    # Include view object for programmatic use
-    if return_view:
-        result["view"] = view
-    
-    return result
 
 
 class LoadViewFromWandB(foo.Operator):
@@ -116,23 +92,25 @@ class LoadViewFromWandB(foo.Operator):
             ...     artifact="dataset_view_abc123:latest"
             ... )
         """
-        action = "save_as_view" if save_view and view_name else "apply_to_session"
+        # Create mock context for credential access
+        ctx = create_mock_context(dataset.view(), dataset, {})
+        
+        # Get credentials and API
+        entity, _, _ = get_credentials(ctx)
+        api = get_wandb_api(ctx)
+        
+        # Fetch artifact and get sample IDs
+        artifact_obj = api.artifact(f"{entity}/{project}/{artifact}")
+        sample_ids = artifact_obj.metadata["sample_ids"]
+        
+        # Recreate view
+        view = dataset.select(sample_ids)
+        
+        # Optionally save as named view
         if save_view and view_name:
-            action = "both"
+            dataset.save_view(view_name, view)
         
-        ctx = create_mock_context(
-            dataset.view(),  # Use full dataset as base view
-            dataset,
-            {
-                "project": project,
-                "artifact": artifact,
-                "action": action,
-                "view_name": view_name,
-            }
-        )
-        
-        result = _load_view_from_wandb(ctx, return_view=True)
-        return result["view"]
+        return view
     
     def resolve_input(self, ctx):
         inputs = types.Object()
