@@ -17,7 +17,6 @@ import fiftyone.operators.types as types
 import fiftyone.zoo as foz
 
 from ..wandb_helpers import (
-    WANDB_AVAILABLE,
     create_mock_context,
     get_credentials,
     get_wandb_api,

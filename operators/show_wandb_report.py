@@ -12,9 +12,7 @@ from ..wandb_helpers import (
     get_credentials,
     get_project_url,
     get_wandb_api,
-    get_wandb_base_url,
     prompt_for_missing_credentials,
-    WANDB_AVAILABLE,
 )
 
 
@@ -135,56 +133,46 @@ class ShowWandBReport(foo.Operator):
         return types.Property(inputs)
 
     def execute(self, ctx):
-        # Get selected report label and find the report URL
-        report_label = ctx.params.get("report_label", None)
+        # Get credentials (validated by resolve_input)
+        entity, _, _ = get_credentials(ctx)
+        project_name = ctx.params["project_name"]  # Required field
+        report_label = ctx.params["report_label"]  # Required field
+        
         report_url = None
         run_url = None
         
-        entity, _, _ = get_credentials(ctx)
-        project_name = ctx.params.get("project_name")
-        
-        if report_label and entity and project_name:
-            try:
-                api = get_wandb_api(ctx)
-                
-                # Find the report URL
-                reports = list(api.reports(path=f"{entity}/{project_name}", per_page=100))
-                for report in reports:
-                    display_name = report.display_name or report.name
-                    if report.description:
-                        desc = report.description[:250] + "..." if len(report.description) > 250 else report.description
-                        label = f"{display_name} - {desc}"
-                    else:
-                        label = f"{display_name} - No description provided"
-                    
-                    if label == report_label:
-                        report_url = report.url
-                        break
-                
-                # Get a recent run from the project to use as entry point
-                runs = list(api.runs(path=f"{entity}/{project_name}", per_page=5))
-                if runs:
-                    run_url = runs[0].url
+        try:
+            api = get_wandb_api(ctx)
+            
+            # Find the report URL
+            reports = list(api.reports(path=f"{entity}/{project_name}", per_page=100))
+            for report in reports:
+                display_name = report.display_name or report.name
+                if report.description:
+                    desc = report.description[:250] + "..." if len(report.description) > 250 else report.description
+                    label = f"{display_name} - {desc}"
                 else:
-                    # No runs available, fallback to project overview
-                    run_url = get_project_url(ctx, project_name)
-                    
-            except Exception as e:
-                print(f"Error fetching data: {e}")
-                run_url = get_project_url(ctx, project_name)
+                    label = f"{display_name} - No description provided"
+                
+                if label == report_label:
+                    report_url = report.url
+                    break
+            
+            # Get a recent run to use as entry point (W&B embeds runs better)
+            runs = list(api.runs(path=f"{entity}/{project_name}", per_page=5))
+            if runs:
+                run_url = runs[0].url
+                
+        except Exception as e:
+            print(f"Error fetching data: {e}")
         
-        # Fallback URLs if something went wrong
+        # Fallback to project page if no runs or API error
         if not run_url:
-            if entity and project_name:
-                run_url = get_project_url(ctx, project_name)
-            else:
-                run_url = get_wandb_base_url(ctx)
+            run_url = get_project_url(ctx, project_name)
         
+        # Fallback to reports listing if specific report not found
         if not report_url:
-            if entity and project_name:
-                report_url = f"{get_project_url(ctx, project_name)}/reports"
-            else:
-                report_url = get_wandb_base_url(ctx)
+            report_url = f"{get_project_url(ctx, project_name)}/reports"
         
         # Show the report URL to user for reference
         print(f"📊 Report URL: {report_url}")

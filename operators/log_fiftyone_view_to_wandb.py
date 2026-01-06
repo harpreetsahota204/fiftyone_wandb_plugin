@@ -16,7 +16,6 @@ import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
-    WANDB_AVAILABLE,
     create_mock_context,
     extract_dataset_metadata,
     get_credentials,

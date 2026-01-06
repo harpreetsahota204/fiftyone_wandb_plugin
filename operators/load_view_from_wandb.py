@@ -8,26 +8,33 @@ import fiftyone.operators as foo
 import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
-    WANDB_AVAILABLE,
+    create_mock_context,
     get_credentials,
     get_wandb_api,
     prompt_for_missing_credentials,
 )
 
-try:
-    import wandb
-except ImportError:
-    wandb = None
 
-
-def _load_view_from_wandb(ctx):
-    """Load view from WandB artifact"""
+def _load_view_from_wandb(ctx, return_view=False):
+    """Load view from WandB artifact.
     
+    Args:
+        ctx: Execution context with dataset and params
+        return_view: If True, return the view object (for programmatic use).
+                    If False, trigger session update (for UI use).
+    
+    Returns:
+        dict: Result with samples_loaded, artifact_name, and optionally view_name
+        If return_view=True, also includes 'view' key with the FiftyOne view
+        
+    Raises:
+        ValueError: If artifact doesn't contain sample_ids metadata
+    """
     # Get credentials and API client (handles login and validation)
     entity, _, _ = get_credentials(ctx)
     api = get_wandb_api(ctx)
     
-    # Get parameters (UI enforces required=True, so these will be present)
+    # Get parameters
     project_name = ctx.params["project"]
     artifact_name = ctx.params["artifact"]
     action = ctx.params.get("action", "apply_to_session")
@@ -37,26 +44,37 @@ def _load_view_from_wandb(ctx):
     artifact = api.artifact(f"{entity}/{project_name}/{artifact_name}")
     
     # Get sample IDs from metadata
-    sample_ids = artifact.metadata["sample_ids"]
+    sample_ids = artifact.metadata.get("sample_ids")
+    if not sample_ids:
+        raise ValueError(
+            f"Artifact '{artifact_name}' does not contain sample_ids metadata. "
+            "This artifact may not have been created by the W&B plugin."
+        )
     
     # Recreate view
     dataset = ctx.dataset
     view = dataset.select(sample_ids)
     
-    # Apply to session
-    if action in ["apply_to_session", "both"]:
+    # Apply to session (UI context only)
+    if not return_view and action in ["apply_to_session", "both"]:
         ctx.trigger("set_view", params={"view": view._serialize()})
     
     # Save as named view
     if action in ["save_as_view", "both"] and view_name:
         dataset.save_view(view_name, view)
     
-    return {
+    result = {
         "success": True,
         "samples_loaded": len(view),
         "view_name": view_name if action != "apply_to_session" else None,
         "artifact_name": artifact_name,
     }
+    
+    # Include view object for programmatic use
+    if return_view:
+        result["view"] = view
+    
+    return result
 
 
 class LoadViewFromWandB(foo.Operator):
@@ -69,6 +87,52 @@ class LoadViewFromWandB(foo.Operator):
             dynamic=True,
             icon="/assets/wandb.svg",
         )
+    
+    def __call__(
+        self,
+        dataset,
+        project,
+        artifact,
+        view_name=None,
+        save_view=False,
+    ):
+        """
+        Programmatic interface for loading a view from WandB artifact.
+        
+        Args:
+            dataset: FiftyOne dataset to load view into
+            project: WandB project name
+            artifact: WandB artifact name (e.g., 'dataset_view_abc123:latest')
+            view_name: Name to save the view as (optional)
+            save_view: Whether to save as a named view (default: False)
+            
+        Returns:
+            FiftyOne DatasetView: The recreated view
+            
+        Example:
+            >>> view = load_view_from_wandb(
+            ...     dataset,
+            ...     project="my-project",
+            ...     artifact="dataset_view_abc123:latest"
+            ... )
+        """
+        action = "save_as_view" if save_view and view_name else "apply_to_session"
+        if save_view and view_name:
+            action = "both"
+        
+        ctx = create_mock_context(
+            dataset.view(),  # Use full dataset as base view
+            dataset,
+            {
+                "project": project,
+                "artifact": artifact,
+                "action": action,
+                "view_name": view_name,
+            }
+        )
+        
+        result = _load_view_from_wandb(ctx, return_view=True)
+        return result["view"]
     
     def resolve_input(self, ctx):
         inputs = types.Object()

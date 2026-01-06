@@ -10,10 +10,8 @@ import fiftyone.operators.types as types
 from ..wandb_helpers import (
     get_credentials,
     get_wandb_api,
-    get_wandb_base_url,
     get_project_url,
     prompt_for_missing_credentials,
-    WANDB_AVAILABLE,
 )
 
 
@@ -126,25 +124,22 @@ class ShowWandBRun(foo.Operator):
         return types.Property(inputs)
 
     def execute(self, ctx):
-        # Get selected run label
-        run_label = ctx.params.get("run_label", None)
-        entity, _, project = get_credentials(ctx)
-        entity = ctx.params.get("entity") or entity
-        project_name = ctx.params.get("project_name") or project
+        # Get credentials (validated by resolve_input)
+        entity, _, _ = get_credentials(ctx)
+        project_name = ctx.params["project_name"]  # Required field
+        run_label = ctx.params.get("run_label")
         
         url = None
         
-        if run_label and entity and project_name:
-            # Fetch runs to find the URL matching the label
+        # Try to get specific run URL if user selected one
+        if run_label:
             try:
                 api = get_wandb_api(ctx)
                 runs = list(api.runs(path=f"{entity}/{project_name}", per_page=100))
                 
-                # Find the run that matches the label (reconstruct same label format)
+                # Find the run that matches the label
                 for run in runs:
-                    # Reconstruct simple label: run name + summary_metrics
                     label = f"{run.name}"
-                    
                     try:
                         summary_metrics = run.summary_metrics
                         if summary_metrics:
@@ -161,12 +156,9 @@ class ShowWandBRun(foo.Operator):
             except Exception as e:
                 print(f"Error fetching runs: {e}")
         
-        # Fallback: open project page if no run selected or found
+        # Fallback to project page if no run selected or API error
         if not url:
-            if entity and project_name:
-                url = get_project_url(ctx, project_name)
-            else:
-                url = get_wandb_base_url(ctx)
+            url = get_project_url(ctx, project_name)
         
         # Embed W&B run in iframe (runs CAN be embedded unlike main dashboard)
         ctx.trigger(

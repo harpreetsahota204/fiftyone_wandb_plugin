@@ -10,7 +10,6 @@ from ..wandb_helpers import (
     get_credentials,
     get_project_url,
     get_wandb_api,
-    get_wandb_base_url,
     prompt_for_missing_credentials,
 )
 
@@ -86,32 +85,23 @@ class OpenWandBPanel(foo.Operator):
         return types.Property(inputs)
 
     def execute(self, ctx):
+        # Get credentials (validated by resolve_input)
         entity, _, _ = get_credentials(ctx)
-        project_name = ctx.params.get("project_name")
+        project_name = ctx.params["project_name"]  # Required field
+        
+        # Try to get a recent run URL (W&B embeds runs better than project pages)
         url = None
+        try:
+            api = get_wandb_api(ctx)
+            runs = list(api.runs(path=f"{entity}/{project_name}", per_page=1))
+            if runs:
+                url = runs[0].url
+        except Exception as e:
+            print(f"Error fetching runs: {e}")
         
-        if entity and project_name:
-            try:
-                api = get_wandb_api(ctx)
-                
-                # Get a recent run from the project to use as entry point
-                runs = list(api.runs(path=f"{entity}/{project_name}", per_page=1))
-                if runs:
-                    url = runs[0].url
-                else:
-                    # No runs available, fallback to project overview
-                    url = get_project_url(ctx, project_name)
-                    
-            except Exception as e:
-                print(f"Error fetching runs: {e}")
-                url = get_project_url(ctx, project_name)
-        
-        # Fallback URLs if something went wrong
+        # Fallback to project page if no runs or API error
         if not url:
-            if entity and project_name:
-                url = get_project_url(ctx, project_name)
-            else:
-                url = get_wandb_base_url(ctx)
+            url = get_project_url(ctx, project_name)
         
         # Show what we're loading
         print(f"🚀 Loading W&B: {url}")
