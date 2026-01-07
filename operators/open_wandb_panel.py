@@ -105,9 +105,12 @@ class OpenWandBPanel(foo.Operator):
         if not url:
             url = get_project_url(ctx, project_name)
         
-        # Show what we're loading
+        # Debug: Show what we're loading
         print(f"🚀 Loading W&B: {url}")
+        print(f"   Entity: {entity}")
+        print(f"   Project: {project_name}")
         print(f"💡 Once loaded, you can navigate to Reports, Artifacts, and other sections within W&B")
+        print(f"⚠️  If you see 'Access Denied', make sure you're logged into W&B in your browser")
         
         # Load the URL in the panel
         ctx.trigger(
