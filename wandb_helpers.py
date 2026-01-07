@@ -244,10 +244,16 @@ def ensure_wandb_login(ctx):
         raise ImportError("wandb is not installed. Install it with: pip install wandb")
     
     _, api_key, _ = get_credentials(ctx)
+    base_url = get_wandb_base_url(ctx)
     
-    # Login only if API key provided (wandb will use cached login otherwise)
+    # Login with host for self-hosted W&B support
+    # Only login if API key provided (wandb will use cached login otherwise)
     if api_key:
-        wandb.login(key=api_key, relogin=False)
+        # Use host parameter for self-hosted W&B deployments
+        if base_url and base_url != DEFAULT_WANDB_URL:
+            wandb.login(key=api_key, host=base_url, relogin=False)
+        else:
+            wandb.login(key=api_key, relogin=False)
 
 
 def get_wandb_api(ctx):
