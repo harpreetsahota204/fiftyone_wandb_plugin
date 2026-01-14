@@ -236,10 +236,8 @@ def _add_sample_references(artifact, view):
         json.dump(sample_refs, f, indent=2)
         temp_path = f.name
     
-    try:
-        artifact.add_file(temp_path, name="sample_references.json")
-    finally:
-        os.unlink(temp_path)
+    artifact.add_file(temp_path, name="sample_references.json")
+    os.unlink(temp_path)
 
 
 def _add_embeddings(artifact, view, embedding_field):
@@ -268,10 +266,8 @@ def _add_embeddings(artifact, view, embedding_field):
         )
         temp_path = f.name
     
-    try:
-        artifact.add_file(temp_path, name=f"embeddings/{embedding_field}.npz")
-    finally:
-        os.unlink(temp_path)
+    artifact.add_file(temp_path, name=f"embeddings/{embedding_field}.npz")
+    os.unlink(temp_path)
 
 
 # ============================================================================
@@ -339,15 +335,21 @@ def _log_fiftyone_view_to_wandb(ctx):
     get_wandb_api(ctx)
     
     # Use resume="allow" to handle both existing and new runs
-    # If run exists, it resumes; if not, it creates new
-    with wandb.init(project=project_name, id=run_id, resume="allow", entity=entity) as run:
-        run.log_artifact(artifact)
-        run.config.update({
-            "fiftyone_view_artifact": f"{artifact_name}:latest",
-            "fiftyone_dataset_name": dataset.name,
-            "fiftyone_view_size": len(view),
-            "fiftyone_is_subset": is_subset_view(view),
-        })
+    run = wandb.init(project=project_name, id=run_id, resume="allow", entity=entity)
+    
+    # Log artifact and wait for upload to complete
+    logged_artifact = run.log_artifact(artifact, aliases=["latest"])
+    logged_artifact.wait()
+    
+    run.config.update({
+        "fiftyone_view_artifact": f"{artifact_name}:latest",
+        "fiftyone_dataset_name": dataset.name,
+        "fiftyone_view_size": len(view),
+        "fiftyone_is_subset": is_subset_view(view),
+    })
+    
+    # Finish run and wait for all uploads
+    wandb.finish()
     
     # Construct URL ourselves to respect FIFTYONE_WANDB_URL setting
     wandb_url = get_run_url(ctx, project_name, run_id)
@@ -504,4 +506,3 @@ class LogFiftyOneViewToWandB(foo.Operator):
         outputs.int("samples_logged", label="Samples Logged")
         outputs.str("wandb_url", label="WandB URL", view=types.LinkView())
         return types.Property(outputs)
-
