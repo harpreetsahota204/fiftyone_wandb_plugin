@@ -331,15 +331,25 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # 5. Upload to WandB
-    # Get API (handles login internally)
+    # Ensure clean W&B state before init
+    if wandb.run is not None:
+        wandb.finish()
+    
+    # Ensure logged in
     get_wandb_api(ctx)
     
     # Use resume="allow" to handle both existing and new runs
-    run = wandb.init(project=project_name, id=run_id, resume="allow", entity=entity)
+    # reinit=True allows creating new runs in the same process
+    run = wandb.init(
+        project=project_name, 
+        id=run_id, 
+        resume="allow", 
+        entity=entity,
+        reinit=True,
+    )
     
-    # Log artifact and wait for upload to complete
-    logged_artifact = run.log_artifact(artifact, aliases=["latest"])
-    logged_artifact.wait()
+    # Log artifact (finish() will wait for uploads to complete)
+    run.log_artifact(artifact)
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",
@@ -348,7 +358,7 @@ def _log_fiftyone_view_to_wandb(ctx):
         "fiftyone_is_subset": is_subset_view(view),
     })
     
-    # Finish run and wait for all uploads
+    # Finish run - this waits for artifact uploads to complete
     wandb.finish()
     
     # Construct URL ourselves to respect FIFTYONE_WANDB_URL setting
