@@ -9,7 +9,7 @@ import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
     create_mock_context,
-    get_artifact_collections,
+    get_artifact_versions,
     get_credentials,
     get_wandb_api,
     prompt_for_missing_credentials,
@@ -24,7 +24,7 @@ def _load_view_from_wandb(ctx):
     
     # Get parameters (UI enforces required=True, so these will be present)
     project_name = ctx.params["project"]
-    artifact_name = ctx.params["artifact"]
+    artifact_name = ctx.params["artifact"]  # Already includes version from dropdown
     action = ctx.params.get("action", "apply_to_session")
     view_name = ctx.params.get("view_name")
     
@@ -100,6 +100,10 @@ class LoadViewFromWandB(foo.Operator):
         entity, _, _ = get_credentials(ctx)
         api = get_wandb_api(ctx)
         
+        # Append :latest if no version/alias specified
+        if ":" not in artifact:
+            artifact = f"{artifact}:latest"
+        
         # Fetch artifact and get sample IDs
         artifact_obj = api.artifact(f"{entity}/{project}/{artifact}")
         sample_ids = artifact_obj.metadata["sample_ids"]
@@ -149,7 +153,8 @@ class LoadViewFromWandB(foo.Operator):
         project_name = ctx.params.get("project")
         if project_name:
             # Use efficient artifact_collections API instead of iterating through runs
-            artifact_names = get_artifact_collections(api, entity, project_name, type_name="dataset")
+            # Returns full versioned names like "my_artifact:v0", "my_artifact:latest"
+            artifact_names = get_artifact_versions(api, entity, project_name, type_name="dataset")
             
             artifact_choices = [
                 types.Choice(label=name, value=name)
@@ -175,7 +180,7 @@ class LoadViewFromWandB(foo.Operator):
             return types.Property(inputs)
         
         # Show artifact info
-        artifact_name = ctx.params.get("artifact")
+        artifact_name = ctx.params.get("artifact")  # Already includes version from dropdown
         if artifact_name and project_name:
             full_artifact_path = f"{entity}/{project_name}/{artifact_name}"
             artifact = api.artifact(full_artifact_path)

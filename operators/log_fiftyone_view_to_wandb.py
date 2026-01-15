@@ -298,6 +298,14 @@ def _log_fiftyone_view_to_wandb(ctx):
     else:
         artifact_name = f"dataset_view_{run_id[:8]}"
     
+    # Parse aliases (comma-separated string to list)
+    aliases_str = ctx.params.get("artifact_aliases", "")
+    if aliases_str:
+        aliases = [a.strip() for a in aliases_str.split(",") if a.strip()]
+    else:
+        aliases = ["latest"]
+    primary_alias = aliases[0]  # First alias for references
+    
     # Prepare metadata BEFORE wandb.init (no wandb objects here)
     metadata = extract_dataset_metadata(dataset, view)
     if is_subset_view(view):
@@ -344,11 +352,11 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # Log artifact and wait for upload to complete
-    logged_artifact=run.log_artifact(artifact)
+    logged_artifact = run.log_artifact(artifact, aliases=aliases)
     logged_artifact.wait()
     
     run.config.update({
-        "fiftyone_view_artifact": f"{artifact_name}:latest",
+        "fiftyone_view_artifact": f"{artifact_name}:{primary_alias}",
         "fiftyone_dataset_name": dataset.name,
         "fiftyone_view_size": len(view),
         "fiftyone_is_subset": is_subset_view(view),
@@ -365,7 +373,7 @@ def _log_fiftyone_view_to_wandb(ctx):
     run_config.method = "wandb_training"
     run_config.wandb_run_id = run_id
     run_config.wandb_project = project_name
-    run_config.dataset_artifact = f"{artifact_name}:latest"
+    run_config.dataset_artifact = f"{artifact_name}:{primary_alias}"
     run_config.samples_used = len(view)
     if is_subset_view(view):
         run_config.view_serialization = serialize_view(view)
@@ -407,16 +415,33 @@ class LogFiftyOneViewToWandB(foo.Operator):
         project,
         run_id,
         artifact_name=None,
+        aliases=None,
         include_labels=False,
     ):
-        """Programmatic interface for logging FiftyOne views to WandB"""
+        """Programmatic interface for logging FiftyOne views to WandB.
+        
+        Args:
+            sample_collection: FiftyOne dataset or view
+            project: W&B project name
+            run_id: W&B run ID
+            artifact_name: Custom artifact name (optional)
+            aliases: List of aliases or comma-separated string (default: ["latest"])
+            include_labels: Whether to include labels in W&B Table
+        """
         dataset = sample_collection._dataset
         view = sample_collection.view()
+        
+        # Convert aliases list to comma-separated string for consistency
+        if isinstance(aliases, list):
+            aliases_str = ",".join(aliases)
+        else:
+            aliases_str = aliases or ""
         
         ctx = create_mock_context(view, dataset, {
             "project": project,
             "run_id": run_id,
             "artifact_name": artifact_name,
+            "artifact_aliases": aliases_str,
             "include_labels": include_labels,
         })
         
@@ -468,6 +493,8 @@ class LogFiftyOneViewToWandB(foo.Operator):
                    description="From wandb.run.id in your training script. Auto-generated if not provided. Use lowercase, numbers, hyphens, underscores only. No spaces or special chars.")
         inputs.str("artifact_name", label="Artifact Name (optional)", required=False,
                    description="Use lowercase, numbers, hyphens, underscores only. No spaces or special chars.")
+        inputs.str("artifact_aliases", label="Artifact Aliases (optional)", required=False,
+                   description="Comma-separated aliases (e.g., 'latest,production,v1'). Defaults to 'latest' if empty.")
         
         # Label logging option
         inputs.bool("include_labels", label="Include Labels", default=False,
