@@ -344,8 +344,8 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # Log artifact and wait for upload to complete
-    run.log_artifact(artifact)
-    # logged_artifact.wait()
+    logged_artifact=run.log_artifact(artifact)
+    logged_artifact.wait()
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",

@@ -131,4 +131,3 @@ class LogWandBRun(foo.Operator):
 
     def execute(self, ctx):
         return _log_wandb_run(ctx)
-
