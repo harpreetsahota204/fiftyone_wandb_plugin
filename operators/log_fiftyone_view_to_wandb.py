@@ -346,8 +346,11 @@ def _log_fiftyone_view_to_wandb(ctx):
         reinit="finish_previous",
     )
     
-    # Log artifact (finish() will wait for uploads to complete)
-    run.log_artifact(artifact)
+    # Log artifact and explicitly wait for upload to complete
+    # This is critical for loop scenarios - W&B's singleton architecture
+    # can have stale client state if we don't block on upload completion
+    logged_artifact = run.log_artifact(artifact)
+    logged_artifact.wait()  # Block until artifact upload is fully complete
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",
@@ -356,8 +359,9 @@ def _log_fiftyone_view_to_wandb(ctx):
         "fiftyone_is_subset": is_subset_view(view),
     })
     
-    # Finish run - this waits for artifact uploads to complete
-    wandb.finish()
+    # Finish this specific run instance (not global wandb.finish())
+    # to ensure clean state for subsequent calls
+    run.finish()
     
     # Construct URL ourselves to respect FIFTYONE_WANDB_URL setting
     wandb_url = get_run_url(ctx, project_name, run_id)
