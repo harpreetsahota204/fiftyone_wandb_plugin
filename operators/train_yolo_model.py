@@ -511,9 +511,9 @@ class TrainYOLOModel(foo.Operator):
             description="Train an Ultralytics YOLO model on your view and log results to W&B",
             dynamic=True,
             icon="/assets/wandb.svg",
-            allow_immediate_execution=False,
-            allow_delegated_execution=True,
-            default_choice_to_delegated=True,
+            # allow_immediate_execution=False,
+            # allow_delegated_execution=True,
+            # default_choice_to_delegated=True,
         )
     
     def __call__(
