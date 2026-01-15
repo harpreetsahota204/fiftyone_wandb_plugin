@@ -16,6 +16,7 @@ import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
     create_mock_context,
+    ensure_wandb_login,
     get_credentials,
     get_run_url,
     get_wandb_api,
@@ -300,6 +301,9 @@ def _train_yolo_model(ctx):
     if not ULTRALYTICS_AVAILABLE:
         raise ImportError("ultralytics is not installed. Install with: pip install ultralytics")
     
+    # Ensure W&B is logged in (important for delegated execution where secrets may not be available)
+    ensure_wandb_login(ctx)
+    
     # Get parameters
     entity, _, _ = get_credentials(ctx)
     
@@ -511,9 +515,8 @@ class TrainYOLOModel(foo.Operator):
             description="Train an Ultralytics YOLO model on your view and log results to W&B",
             dynamic=True,
             icon="/assets/wandb.svg",
-            # allow_immediate_execution=False,
-            # allow_delegated_execution=True,
-            # default_choice_to_delegated=True,
+            allow_immediate_execution=True,
+            allow_delegated_execution=True,
         )
     
     def __call__(
@@ -598,7 +601,23 @@ class TrainYOLOModel(foo.Operator):
             return types.Property(inputs)
         
         # Get credentials and API
-        entity, _, project = get_credentials(ctx)
+        entity, api_key, project = get_credentials(ctx)
+        
+        # IMPORTANT: Pass credentials through as hidden params for delegated execution
+        # When delegating, ctx.secrets won't be available, so we need to pass credentials
+        # explicitly in params. These are hidden from the UI.
+        if entity and not ctx.params.get("wandb_entity"):
+            inputs.str(
+                "wandb_entity",
+                default=entity,
+                view=types.HiddenView(),
+            )
+        if api_key and not ctx.params.get("wandb_api_key"):
+            inputs.str(
+                "wandb_api_key", 
+                default=api_key,
+                view=types.HiddenView(),
+            )
         
         try:
             api = get_wandb_api(ctx)
