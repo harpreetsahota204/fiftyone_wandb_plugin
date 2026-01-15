@@ -189,9 +189,8 @@ def _apply_yolo_model(ctx):
         api, model_artifact
     )
     
-    # Extract model info from metadata
+    # Extract task type from metadata
     task_type = artifact_metadata.get("task_type", "detection")
-    model_name = artifact_metadata.get("model_name", "unknown")
     
     # Load YOLO model
     model = YOLO(weights_path)
@@ -227,19 +226,20 @@ def _apply_yolo_model(ctx):
         if predictions_artifact_name:
             final_artifact_name = sanitize_for_artifact(predictions_artifact_name)
         else:
-            safe_model = sanitize_for_artifact(model_name)
+            # Extract artifact name from path: "entity/project/artifact_name:version" -> "artifact_name"
+            artifact_base_name = model_artifact.split("/")[-1].split(":")[0]
+            safe_name = sanitize_for_artifact(artifact_base_name)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            final_artifact_name = f"{safe_model}_predictions_{timestamp}"
+            final_artifact_name = f"{safe_name}_predictions_{timestamp}"
         
         # Create predictions artifact with lineage metadata
         predictions_artifact = wandb.Artifact(
             name=final_artifact_name,
             type="predictions",
-            description=f"Predictions from {model_name} on {dataset.name}",
+            description=f"Predictions from {model_artifact} on {dataset.name}",
             metadata={
                 # Model lineage
                 "source_model_artifact": model_artifact,
-                "model_name": model_name,
                 "task_type": task_type,
                 "confidence_threshold": confidence_threshold,
                 
@@ -277,7 +277,6 @@ def _apply_yolo_model(ctx):
             
             # Log run config
             run.config.update({
-                "model_name": model_name,
                 "model_artifact": model_artifact,
                 "task_type": task_type,
                 "predictions_field": predictions_field,
@@ -291,7 +290,6 @@ def _apply_yolo_model(ctx):
     run_config = dataset.init_run()
     run_config.method = "wandb_model_inference"
     run_config.model_artifact = model_artifact
-    run_config.model_name = model_name
     run_config.task_type = task_type
     run_config.predictions_field = predictions_field
     run_config.confidence_threshold = confidence_threshold
@@ -304,14 +302,14 @@ def _apply_yolo_model(ctx):
         run_config.wandb_url = wandb_url
     
     # Create run key
-    safe_model = sanitize_for_run_key(model_name)
-    run_key = f"inference_{safe_model}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    artifact_base_name = model_artifact.split("/")[-1].split(":")[0]
+    safe_name = sanitize_for_run_key(artifact_base_name)
+    run_key = f"inference_{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     dataset.register_run(run_key, run_config)
     
     return {
         "success": True,
         "model_artifact": model_artifact,
-        "model_name": model_name,
         "task_type": task_type,
         "predictions_field": predictions_field,
         "samples_processed": len(target),
@@ -597,7 +595,6 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
     def resolve_output(self, ctx):
         outputs = types.Object()
         outputs.str("model_artifact", label="Model Artifact")
-        outputs.str("model_name", label="Model Name")
         outputs.str("task_type", label="Task Type")
         outputs.str("predictions_field", label="Predictions Field")
         outputs.int("samples_processed", label="Samples Processed")
