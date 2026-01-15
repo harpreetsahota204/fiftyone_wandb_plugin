@@ -332,8 +332,8 @@ def _log_fiftyone_view_to_wandb(ctx):
     
     # 5. Upload to WandB
     # Ensure clean W&B state before init
-    # if wandb.run is not None:
-    #     wandb.finish()
+    if wandb.run is not None:
+        wandb.finish()
     
     # Ensure logged in
     get_wandb_api(ctx)
