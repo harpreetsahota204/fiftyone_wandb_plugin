@@ -184,9 +184,17 @@ def _apply_yolo_model(ctx):
     # Get W&B API
     api = get_wandb_api(ctx)
     
+    # Ensure artifact path is fully qualified (entity/project/name:version)
+    # If it's just "name:version", prepend entity/project
+    if "/" not in model_artifact:
+        wandb_entity = api.default_entity
+        full_artifact_path = f"{wandb_entity}/{project_name}/{model_artifact}"
+    else:
+        full_artifact_path = model_artifact
+    
     # Download model weights from artifact
     weights_path, artifact_metadata = _download_model_from_artifact(
-        api, model_artifact
+        api, full_artifact_path
     )
     
     # Extract task type from metadata
@@ -227,7 +235,7 @@ def _apply_yolo_model(ctx):
             final_artifact_name = sanitize_for_artifact(predictions_artifact_name)
         else:
             # Extract artifact name from path: "entity/project/artifact_name:version" -> "artifact_name"
-            artifact_base_name = model_artifact.split("/")[-1].split(":")[0]
+            artifact_base_name = full_artifact_path.split("/")[-1].split(":")[0]
             safe_name = sanitize_for_artifact(artifact_base_name)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             final_artifact_name = f"{safe_name}_predictions_{timestamp}"
@@ -236,10 +244,10 @@ def _apply_yolo_model(ctx):
         predictions_artifact = wandb.Artifact(
             name=final_artifact_name,
             type="predictions",
-            description=f"Predictions from {model_artifact} on {dataset.name}",
+            description=f"Predictions from {full_artifact_path} on {dataset.name}",
             metadata={
                 # Model lineage
-                "source_model_artifact": model_artifact,
+                "source_model_artifact": full_artifact_path,
                 "task_type": task_type,
                 "confidence_threshold": confidence_threshold,
                 
@@ -266,10 +274,11 @@ def _apply_yolo_model(ctx):
         
         # Create W&B run and log with lineage
         wandb_run_id = run_name if run_name else f"inference_{uuid.uuid4().hex[:8]}"
+        wandb_entity = api.default_entity
         
-        with wandb.init(project=project_name, id=wandb_run_id, name=run_name, entity=entity, reinit="finish_previous") as run:
+        with wandb.init(project=project_name, id=wandb_run_id, name=run_name, entity=wandb_entity, reinit="finish_previous") as run:
             # Use the model artifact to create lineage (this links predictions -> model)
-            run.use_artifact(model_artifact)
+            run.use_artifact(full_artifact_path)
             
             # Log the predictions artifact
             logged_artifact = run.log_artifact(predictions_artifact)
@@ -277,7 +286,7 @@ def _apply_yolo_model(ctx):
             
             # Log run config
             run.config.update({
-                "model_artifact": model_artifact,
+                "model_artifact": full_artifact_path,
                 "task_type": task_type,
                 "predictions_field": predictions_field,
                 "confidence_threshold": confidence_threshold,
@@ -289,7 +298,7 @@ def _apply_yolo_model(ctx):
     # Register inference run in FiftyOne
     run_config = dataset.init_run()
     run_config.method = "wandb_model_inference"
-    run_config.model_artifact = model_artifact
+    run_config.model_artifact = full_artifact_path
     run_config.task_type = task_type
     run_config.predictions_field = predictions_field
     run_config.confidence_threshold = confidence_threshold
@@ -302,14 +311,14 @@ def _apply_yolo_model(ctx):
         run_config.wandb_url = wandb_url
     
     # Create run key
-    artifact_base_name = model_artifact.split("/")[-1].split(":")[0]
+    artifact_base_name = full_artifact_path.split("/")[-1].split(":")[0]
     safe_name = sanitize_for_run_key(artifact_base_name)
     run_key = f"inference_{safe_name}_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
     dataset.register_run(run_key, run_config)
     
     return {
         "success": True,
-        "model_artifact": model_artifact,
+        "model_artifact": full_artifact_path,
         "task_type": task_type,
         "predictions_field": predictions_field,
         "samples_processed": len(target),
