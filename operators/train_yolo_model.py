@@ -511,8 +511,9 @@ class TrainYOLOModel(foo.Operator):
             description="Train an Ultralytics YOLO model on your view and log results to W&B",
             dynamic=True,
             icon="/assets/wandb.svg",
-            allow_immediate_execution=True,
+            allow_immediate_execution=False,
             allow_delegated_execution=True,
+            default_choice_to_delegated=True,
         )
     
     def __call__(
@@ -705,8 +706,13 @@ class TrainYOLOModel(foo.Operator):
             view=optimizer_choices
         )
         
-        inputs.int("patience", label="Early Stopping Patience", default=50, required=True,
-                   description="Epochs to wait before early stopping (0 to disable)")
+        inputs.int(
+            "patience", 
+            label="Early Stopping Patience", 
+            default=50, 
+            required=True,
+            description="Epochs to wait before early stopping (0 to disable)"
+            )
         
         # Optional validation split
         all_tags = ctx.dataset.distinct("tags")
@@ -752,7 +758,7 @@ class TrainYOLOModel(foo.Operator):
                 for artifact in run.logged_artifacts():
                     if artifact.type == "dataset":
                         # Use full qualified name: entity/project/name:alias
-                        full_name = f"{artifact.name}:latest"
+                        full_name = f"{entity}/{project_name}/{artifact.name}"
                         artifact_names.add(full_name)
         
         # Run ID selector - allows selecting existing run OR typing new ID
@@ -797,7 +803,13 @@ class TrainYOLOModel(foo.Operator):
         )
         
         # ===== Execution Options =====
-        inputs.view("section_execution", types.Header(label="Execution Options", divider=True))
+        inputs.view(
+            "section_execution", 
+            types.Header(
+                label="Execution Options", 
+                divider=True
+                )
+            )
         
         inputs.bool(
             "delegate",
