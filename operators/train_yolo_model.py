@@ -295,7 +295,7 @@ def _extract_metrics(results, task_type):
 # MAIN TRAINING FUNCTION
 # ============================================================================
 
-def _train_yolo_model(ctx, progress_callback=None):
+def _train_yolo_model(ctx):
     """Train YOLO model on FiftyOne view with W&B logging."""
     
     if not ULTRALYTICS_AVAILABLE:
@@ -351,9 +351,6 @@ def _train_yolo_model(ctx, progress_callback=None):
     _ensure_directories(export_dir)
     
     # ========== PHASE 1: Export Data ==========
-    if progress_callback:
-        progress_callback(0.05, "Exporting training data...")
-    
     # Export training view
     _export_for_training(view, task_type, label_field, export_dir, split="train")
     
@@ -368,9 +365,6 @@ def _train_yolo_model(ctx, progress_callback=None):
         data_path = os.path.join(export_dir, "dataset.yaml")
     
     # ========== PHASE 2: Initialize W&B ==========
-    if progress_callback:
-        progress_callback(0.1, "Initializing W&B run...")
-    
     # Ensure clean W&B state
     if wandb.run is not None:
         wandb.finish()
@@ -406,9 +400,6 @@ def _train_yolo_model(ctx, progress_callback=None):
             print(f"Warning: Could not use dataset artifact: {e}")
     
     # ========== PHASE 3: Train Model ==========
-    if progress_callback:
-        progress_callback(0.15, f"Training {model_name} for {epochs} epochs...")
-    
     # Initialize YOLO model
     model = YOLO(model_name)
     
@@ -433,9 +424,6 @@ def _train_yolo_model(ctx, progress_callback=None):
     train_output_dir = str(results.save_dir)
     
     # ========== PHASE 4: Log Metrics ==========
-    if progress_callback:
-        progress_callback(0.8, "Logging metrics and visualizations to W&B...")
-    
     # Extract and log metrics
     metrics = _extract_metrics(results, task_type)
     wandb.log(metrics)
@@ -444,9 +432,6 @@ def _train_yolo_model(ctx, progress_callback=None):
     logged_images = _log_training_visualizations(run, train_output_dir)
     
     # ========== PHASE 5: Log Model Artifact ==========
-    if progress_callback:
-        progress_callback(0.9, "Uploading model artifact...")
-    
     weights_path = os.path.join(train_output_dir, "weights", "best.pt")
     
     model_artifact = None
@@ -818,6 +803,16 @@ class TrainYOLOModel(foo.Operator):
             description="Custom name for the output model artifact (auto-generated if empty)"
         )
         
+        # ===== Execution Options =====
+        inputs.view("section_execution", types.Header(label="Execution Options", divider=True))
+        
+        inputs.bool(
+            "delegate",
+            label="Delegate execution",
+            description="Run training in background (recommended for longer training jobs)",
+            default=False
+        )
+        
         # ===== Summary =====
         model_name = ctx.params.get("model_name", "")
         epochs = ctx.params.get("epochs", 10)
@@ -832,14 +827,11 @@ class TrainYOLOModel(foo.Operator):
         return types.Property(inputs)
     
     def resolve_delegation(self, ctx):
-        """Allow user to choose execution mode."""
-        return False
+        """Delegate based on user checkbox selection."""
+        return ctx.params.get("delegate", False)
     
     def execute(self, ctx):
-        def progress_callback(progress, label):
-            ctx.set_progress(progress=progress, label=label)
-        
-        return _train_yolo_model(ctx, progress_callback)
+        return _train_yolo_model(ctx)
     
     def resolve_output(self, ctx):
         outputs = types.Object()
