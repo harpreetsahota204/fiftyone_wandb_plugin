@@ -332,8 +332,8 @@ def _log_fiftyone_view_to_wandb(ctx):
     
     # 5. Upload to WandB
     # Ensure clean W&B state before init
-    if wandb.run is not None:
-        wandb.finish()
+    # if wandb.run is not None:
+    #     wandb.finish()
     
     # Ensure logged in
     get_wandb_api(ctx)
@@ -348,7 +348,6 @@ def _log_fiftyone_view_to_wandb(ctx):
     
     # Log artifact (finish() will wait for uploads to complete)
     run.log_artifact(artifact)
-    artifact.wait()
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",
