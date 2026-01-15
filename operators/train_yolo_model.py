@@ -17,6 +17,7 @@ import fiftyone.operators.types as types
 from ..wandb_helpers import (
     create_mock_context,
     ensure_wandb_login,
+    get_artifact_collections,
     get_credentials,
     get_run_url,
     get_wandb_api,
@@ -772,13 +773,12 @@ class TrainYOLOModel(foo.Operator):
             runs = list(api.runs(path=f"{entity}/{project_name}", per_page=50))
             existing_runs = runs
             
-            # Also collect dataset artifacts for lineage
-            for run in runs:
-                for artifact in run.logged_artifacts():
-                    if artifact.type == "dataset":
-                        # Use full qualified name: entity/project/name:alias
-                        full_name = f"{entity}/{project_name}/{artifact.name}"
-                        artifact_names.add(full_name)
+            # Use efficient artifact_collections API for lineage artifacts
+            collection_names = get_artifact_collections(api, entity, project_name, type_name="dataset")
+            for name in collection_names:
+                # Use full qualified name: entity/project/name:latest
+                full_name = f"{entity}/{project_name}/{name}:latest"
+                artifact_names.add(full_name)
         
         # Run ID selector - allows selecting existing run OR typing new ID
         if existing_runs:

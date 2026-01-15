@@ -9,6 +9,7 @@ import fiftyone.operators.types as types
 
 from ..wandb_helpers import (
     create_mock_context,
+    get_artifact_collections,
     get_credentials,
     get_wandb_api,
     prompt_for_missing_credentials,
@@ -147,13 +148,8 @@ class LoadViewFromWandB(foo.Operator):
         # Artifact selector (dataset artifacts only)  
         project_name = ctx.params.get("project")
         if project_name:
-            runs = api.runs(path=f"{entity}/{project_name}")
-            artifact_names = set()
-            
-            for run in runs:
-                for artifact in run.logged_artifacts():
-                    if artifact.type == "dataset":
-                        artifact_names.add(artifact.name)
+            # Use efficient artifact_collections API instead of iterating through runs
+            artifact_names = get_artifact_collections(api, entity, project_name, type_name="dataset")
             
             artifact_choices = [
                 types.Choice(label=name, value=name)

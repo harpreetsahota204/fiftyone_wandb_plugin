@@ -307,6 +307,28 @@ def get_wandb_run(ctx, project_name, run_id=None, run_name=None):
     return None
 
 
+def get_artifact_collections(api, entity, project_name, type_name="dataset"):
+    """Get artifact collection names from a W&B project efficiently.
+    
+    Uses the artifact_collections API which is much faster than iterating
+    through all runs and their logged artifacts.
+    
+    Args:
+        api: W&B API client
+        entity: W&B entity (username or team)
+        project_name: W&B project name
+        type_name: Artifact type to filter (default: "dataset")
+        
+    Returns:
+        list: List of artifact collection names (without version/alias)
+    """
+    collections = api.artifact_collections(
+        project_name=f"{entity}/{project_name}",
+        type_name=type_name
+    )
+    return [c.name for c in collections]
+
+
 def get_project_url(ctx, project_name):
     """Construct W&B project URL.
     
