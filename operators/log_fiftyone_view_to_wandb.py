@@ -343,11 +343,12 @@ def _log_fiftyone_view_to_wandb(ctx):
         id=run_id, 
         resume="allow", 
         entity=entity,
-        finish_previous=True,
+        reinit="finish_previous",
     )
     
     # Log artifact (finish() will wait for uploads to complete)
     run.log_artifact(artifact)
+    run.wait()
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",
