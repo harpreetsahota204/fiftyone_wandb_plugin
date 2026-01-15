@@ -2,6 +2,9 @@
 
 This package contains all the operators for the W&B plugin.
 """
+import os
+
+os.environ['FIFTYONE_ALLOW_LEGACY_ORCHESTRATORS'] = 'true'
 
 from .log_wandb_run import LogWandBRun
 from .open_wandb_panel import OpenWandBPanel
