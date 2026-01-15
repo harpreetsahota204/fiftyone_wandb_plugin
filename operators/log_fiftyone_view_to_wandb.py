@@ -324,7 +324,6 @@ def _log_fiftyone_view_to_wandb(ctx):
     )
     
     # Create artifact AFTER wandb.init() to ensure correct client state
-    # hope this fixes "Invalid Client ID digest" errors in loops
     artifact = wandb.Artifact(
         name=artifact_name,
         type="dataset",
@@ -345,8 +344,8 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # Log artifact and wait for upload to complete
-    logged_artifact = run.log_artifact(artifact)
-    logged_artifact.wait()
+    run.log_artifact(artifact)
+    # logged_artifact.wait()
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",
