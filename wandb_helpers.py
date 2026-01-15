@@ -307,8 +307,8 @@ def get_wandb_run(ctx, project_name, run_id=None, run_name=None):
     return None
 
 
-def get_artifact_collections(api, entity, project_name, type_name="dataset"):
-    """Get artifact collection names from a W&B project efficiently.
+def get_artifact_versions(api, entity, project_name, type_name="dataset"):
+    """Get all artifact versions from a W&B project efficiently.
     
     Uses the artifact_collections API which is much faster than iterating
     through all runs and their logged artifacts.
@@ -320,13 +320,18 @@ def get_artifact_collections(api, entity, project_name, type_name="dataset"):
         type_name: Artifact type to filter (default: "dataset")
         
     Returns:
-        list: List of artifact collection names (without version/alias)
+        list: List of artifact names with versions (e.g., "my_artifact:v0", "my_artifact:latest")
     """
+    artifact_names = []
     collections = api.artifact_collections(
         project_name=f"{entity}/{project_name}",
         type_name=type_name
     )
-    return [c.name for c in collections]
+    for collection in collections:
+        # Get all versions in this collection
+        for artifact in collection.versions():
+            artifact_names.append(artifact.name)
+    return artifact_names
 
 
 def get_project_url(ctx, project_name):
