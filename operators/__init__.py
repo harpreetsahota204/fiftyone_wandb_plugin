@@ -15,6 +15,7 @@ from .log_fiftyone_view_to_wandb import LogFiftyOneViewToWandB
 from .log_model_predictions import LogModelPredictions
 from .load_view_from_wandb import LoadViewFromWandB
 from .train_yolo_model import TrainYOLOModel
+from .apply_yolo_model_from_registry import ApplyYOLOModelFromRegistry
 
 __all__ = [
     "LogWandBRun",
@@ -26,5 +27,6 @@ __all__ = [
     "LogModelPredictions",
     "LoadViewFromWandB",
     "TrainYOLOModel",
+    "ApplyYOLOModelFromRegistry",
 ]
 
