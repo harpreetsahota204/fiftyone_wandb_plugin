@@ -331,9 +331,11 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # 5. Upload to WandB
-    # Ensure clean W&B state before init
+    # Fully reset W&B singleton state to avoid stale client ID errors in loops
+    # wandb.teardown() clears all internal state including the client ID digest
     if wandb.run is not None:
         wandb.finish()
+    wandb.teardown()
     
     # Ensure logged in
     get_wandb_api(ctx)
@@ -343,7 +345,6 @@ def _log_fiftyone_view_to_wandb(ctx):
         id=run_id, 
         resume="allow", 
         entity=entity,
-        reinit="finish_previous",
     )
     
     # Log artifact and explicitly wait for upload to complete
