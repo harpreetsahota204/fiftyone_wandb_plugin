@@ -511,6 +511,8 @@ class TrainYOLOModel(foo.Operator):
             description="Train an Ultralytics YOLO model on your view and log results to W&B",
             dynamic=True,
             icon="/assets/wandb.svg",
+            allow_immediate_execution=True,
+            allow_delegated_execution=True,
         )
     
     def __call__(
@@ -750,7 +752,7 @@ class TrainYOLOModel(foo.Operator):
                 for artifact in run.logged_artifacts():
                     if artifact.type == "dataset":
                         # Use full qualified name: entity/project/name:alias
-                        full_name = f"{entity}/{project_name}/{artifact.name}:latest"
+                        full_name = f"{artifact.name}:latest"
                         artifact_names.add(full_name)
         
         # Run ID selector - allows selecting existing run OR typing new ID
