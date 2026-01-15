@@ -537,7 +537,7 @@ class TrainYOLOModel(foo.Operator):
             dynamic=True,
             icon="/assets/wandb.svg",
             execution_options=foo.ExecutionOptions(
-                allow_immediate=False,  # Training is always long-running
+                allow_immediate=True,  # Allow immediate for testing, but delegation preferred
                 allow_delegation=True,
                 default_choice_to_delegated=True,
             ),
