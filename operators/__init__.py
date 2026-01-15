@@ -11,6 +11,7 @@ from .show_wandb_report import ShowWandBReport
 from .log_fiftyone_view_to_wandb import LogFiftyOneViewToWandB
 from .log_model_predictions import LogModelPredictions
 from .load_view_from_wandb import LoadViewFromWandB
+from .train_yolo_model import TrainYOLOModel
 
 __all__ = [
     "LogWandBRun",
@@ -21,5 +22,6 @@ __all__ = [
     "LogFiftyOneViewToWandB",
     "LogModelPredictions",
     "LoadViewFromWandB",
+    "TrainYOLOModel",
 ]
 

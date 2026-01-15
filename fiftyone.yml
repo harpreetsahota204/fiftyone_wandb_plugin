@@ -17,6 +17,7 @@ operators:
   - log_fiftyone_view_to_wandb
   - log_model_predictions
   - load_view_from_wandb
+  - train_yolo_model
 
 # TypeScript/React panels
 panels:
@@ -31,3 +32,4 @@ secrets:
 dependencies:
   - fiftyone
   - wandb
+  - ultralytics

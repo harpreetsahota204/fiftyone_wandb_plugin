@@ -1,2 +1,3 @@
 fiftyone
-wandb
+wandb>=0.24.0
+ultralytics<=8.3.158  # Optional: required for train_yolo_model operator
