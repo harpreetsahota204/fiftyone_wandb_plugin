@@ -4,19 +4,17 @@
 
 ![Show W&B Panel](assets/show_wandb_panel.gif)
 
-
 This plugin connects [FiftyOne](https://docs.voxel51.com/) datasets with [Weights & Biases](https://wandb.ai/) to enable reproducible, data-centric ML workflows.
 
 ## What You Can Do
 
-- ✅ **Track training data** - Log curated FiftyOne views as WandB dataset artifacts
-- ✅ **Track model predictions** - Log inference results with detection-level granularity  
-- ✅ **Track VLM outputs** - Special support for vision-language model workflows
-- ✅ **Reproduce experiments** - Recreate exact training views from WandB artifacts
-- ✅ **Compare strategies** - A/B test data curation, model versions, and prompting approaches
+- **Track training data** - Log curated FiftyOne views as W&B dataset artifacts
+- **Track model predictions** - Log inference results with detection-level granularity  
+- **Track VLM outputs** - Special support for vision-language model workflows
+- **Reproduce experiments** - Recreate exact training views from W&B artifacts
+- **Compare strategies** - A/B test data curation, model versions, and prompting approaches
 
 ![Show W&B Run](assets/show_wandb_run.gif)
-
 
 ---
 
@@ -38,7 +36,7 @@ fiftyone plugins list
 
 ## Configuration
 
-Set your WandB credentials as environment variables:
+Set your W&B credentials as environment variables:
 
 ```bash
 # Required
@@ -58,12 +56,26 @@ Get your API key at [wandb.ai/authorize](https://wandb.ai/authorize).
 
 ---
 
+## Complete Example
+
+For a complete end-to-end workflow demonstrating data curation strategies as experiment variables, see the **[using_fo_wandb_plugin.ipynb](using_fo_wandb_plugin.ipynb)** notebook.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/harpreetsahota204/fiftyone_wandb_plugin/blob/main/using_fo_wandb_plugin.ipynb)
+
+The notebook walks through:
+1. Loading a dataset and computing data quality metrics
+2. Creating multiple curation strategies (baseline, deduplicated, high-uniqueness, high-representativeness)
+3. Logging each strategy to W&B before training
+4. Training models on each strategy with full lineage tracking
+5. Comparing results and recreating the winning strategy's training data
+
+---
+
 ## Quick Start
 
-### 1. Track Training Data
+### Log a Training View to W&B
 
 ![Log View to WandB](assets/log_view_to_wandb.gif)
-
 
 ```python
 import fiftyone as fo
@@ -74,32 +86,31 @@ import wandb
 dataset = fo.load_dataset("my_dataset")
 train_view = dataset.match_tags("train")
 
-# Start WandB run
+# Start W&B run
 wandb.init(project="my-project", name="experiment-1")
 
 # Log the training view with all labels
-operator = foo.get_operator("@harpreetsahota/wandb/log_fiftyone_view_to_wandb")
-operator(
+log_view = foo.get_operator("@harpreetsahota/wandb/log_fiftyone_view_to_wandb")
+log_view(
     train_view,
     project="my-project",
     run_id=wandb.run.id,
-    include_labels=True  # Logs all label types to WandB Table
+    include_labels=True  # Logs all label types to W&B Table
 )
 
 # Train your model...
 wandb.finish()
 ```
 
-**What gets logged to WandB:**
+**What gets logged to W&B:**
 - Sample IDs (for exact reproducibility)
 - All label fields (Detection, Classification, Segmentation, etc.)
 - Dataset statistics and metadata
-- Thumbnail images in interactive WandB Tables
+- Thumbnail images in interactive W&B Tables
 
-### 2. Track Model Predictions
+### Log Model Predictions
 
 ![Log Predictions to WandB](assets/log_predictions_to_wandb.gif)
-
 
 ```python
 import fiftyone.zoo as foz
@@ -108,9 +119,9 @@ import fiftyone.zoo as foz
 model = foz.load_zoo_model("yolov8n-coco-torch")
 dataset.apply_model(model, label_field="predictions")
 
-# Log predictions to WandB
-operator = foo.get_operator("@harpreetsahota/wandb/log_model_predictions")
-result = operator(
+# Log predictions to W&B
+log_preds = foo.get_operator("@harpreetsahota/wandb/log_model_predictions")
+result = log_preds(
     dataset,
     model_name="yolov8n",
     model_version="v1.0",
@@ -119,243 +130,20 @@ result = operator(
 )
 
 print(f"Logged {result['total_predictions']} predictions")
-print(f"View in WandB: {result['wandb_url']}")
+print(f"View in W&B: {result['wandb_url']}")
 ```
 
 **What gets logged:**
-- Per-sample prediction counts: `"person(5), car(3), dog(2)"`
+- Per-sample prediction counts (e.g., `"person(5), car(3), dog(2)"`)
 - Average confidence scores
 - Class distribution across all predictions
 - Low-confidence label IDs for active learning
 
----
-
-## Complete Examples
-
-### Example 1: Data Ablation Study
-
-Compare model performance on different data curation strategies:
-
-```python
-import fiftyone as fo
-import fiftyone.operators as foo
-from fiftyone import ViewField as F
-import wandb
-
-dataset = fo.load_dataset("my_dataset")
-operator = foo.get_operator("@harpreetsahota/wandb/log_fiftyone_view_to_wandb")
-
-# Experiment 1: Full dataset baseline
-wandb.init(project="ablation", name="baseline-full")
-operator(dataset, project="ablation", run_id=wandb.run.id, include_labels=True)
-wandb.finish()
-
-# Experiment 2: High quality samples only
-wandb.init(project="ablation", name="high-quality-only")
-high_quality = dataset.match(F("quality_score") > 0.8)
-operator(high_quality, project="ablation", run_id=wandb.run.id, include_labels=True)
-wandb.finish()
-
-# Experiment 3: Balanced class distribution
-wandb.init(project="ablation", name="balanced-classes")
-balanced = dataset.take(100, seed=42)  # Smart sampling per class
-operator(balanced, project="ablation", run_id=wandb.run.id, include_labels=True)
-wandb.finish()
-
-# Compare in WandB to see which curation strategy yields best results!
-```
-
-### Example 2: Model Version Comparison
-
-Track predictions from different model versions:
-
-```python
-import fiftyone as fo
-import fiftyone.operators as foo
-import fiftyone.zoo as foz
-
-dataset = fo.load_dataset("my_dataset")
-operator = foo.get_operator("@harpreetsahota/wandb/log_model_predictions")
-
-# Model V1: YOLOv8 Nano
-model_v1 = foz.load_zoo_model("yolov8n-coco-torch")
-dataset.apply_model(model_v1, label_field="predictions_v1")
-
-operator(
-    dataset,
-    model_name="yolov8n",
-    model_version="v1.0",
-    predictions_field="predictions_v1",
-    project="model-comparison"
-)
-
-# Model V2: YOLOv8 Small (larger, more accurate)
-model_v2 = foz.load_zoo_model("yolov8s-coco-torch")
-dataset.apply_model(model_v2, label_field="predictions_v2")
-
-operator(
-    dataset,
-    model_name="yolov8s",
-    model_version="v2.0",
-    predictions_field="predictions_v2",
-    project="model-comparison"
-)
-
-# Check WandB artifacts to compare:
-# - Prediction counts per sample
-# - Class distributions
-# - Confidence levels
-```
-
-### Example 3: Active Learning Workflow
-
-Use WandB artifacts to drive your active learning loop:
-
-```python
-import fiftyone as fo
-import fiftyone.operators as foo
-import fiftyone.zoo as foz
-import wandb
-
-dataset = fo.load_dataset("my_dataset")
-
-# Step 1: Apply model and log predictions
-model = foz.load_zoo_model("yolov8n-coco-torch")
-dataset.apply_model(model, label_field="predictions")
-
-operator = foo.get_operator("@harpreetsahota/wandb/log_model_predictions")
-result = operator(
-    dataset,
-    model_name="yolov8n",
-    predictions_field="predictions",
-    project="active-learning"
-)
-
-# Step 2: Download artifact to get low-confidence detections
-api = wandb.Api()
-artifact = api.artifact(f"entity/active-learning/{result['artifact_name']}:latest")
-low_conf_label_ids = artifact.metadata["low_confidence_label_ids"]
-
-print(f"Found {len(low_conf_label_ids)} uncertain predictions")
-
-# Step 3: Select those specific detections in FiftyOne
-uncertain_view = dataset.select_labels(ids=low_conf_label_ids)
-session = fo.launch_app(uncertain_view)
-
-# Step 4: Review in FiftyOne, fix labels, retrain, repeat!
-```
-
-### Example 4: Vision-Language Model Tracking
-
-Track VLM inference with per-sample prompts:
-
-```python
-import fiftyone as fo
-import fiftyone.operators as foo
-
-dataset = fo.load_dataset("traffic-dataset")
-
-# Step 1: Add per-sample prompts to your dataset
-for sample in dataset:
-    # Example: different prompt for each sample based on context
-    sample["user_prompt"] = f"Analyze frame {sample.id}: Describe all vehicles and traffic conditions."
-    sample.save()
-
-# Step 2: Run your VLM inference (example)
-# After inference, VLM outputs are stored as strings in a field
-# For example: sample["vlm_output"] = "2 cars traveling at 65mph, 1 truck..."
-
-# Step 3: Log to WandB with both global config and per-sample prompts
-operator = foo.get_operator("@harpreetsahota/wandb/log_model_predictions")
-operator(
-    dataset,
-    model_name="gpt-4-vision",  # or "claude-3", "llava", etc.
-    predictions_field="vlm_output",
-    project="traffic-analysis",
-    
-    # Global config (same for all samples)
-    model_config={
-        "system_prompt": "You are an expert traffic safety analyst with 20 years of experience.",
-        "temperature": 0.7,
-        "max_tokens": 150,
-        "model_version": "gpt-4-vision-preview"
-    },
-    
-    # Per-sample prompts (field containing unique prompts for each sample)
-    prompt_field="user_prompt"
-)
-
-# WandB Table will show:
-# | sample_id | prompt                        | predictions                                    |
-# |-----------|-------------------------------|------------------------------------------------|
-# | 001       | "Analyze frame 001: Describe..." | "2 cars traveling at 65mph, 1 truck in right lane..." |
-# | 002       | "Analyze frame 002: Describe..." | "Red traffic light at intersection, 2 pedestrians..." |
-```
-
----
-
-## Using the FiftyOne App
-
-All operators have interactive UIs in the FiftyOne App:
-
-### Log Training View
-
-1. Open your dataset: `fo.launch_app(dataset)`
-2. **Create your view** (apply filters, select samples)
-3. Click backtick (`) to open the operators menu → **"W&B: Save View as Artifact"**
-4. Choose target:
-   - 📦 **Dataset** - All samples
-   - 🔍 **Current view** - Filtered samples  
-   - ⭐ **Selected samples** - Hand-picked samples
-5. Toggle **"Include Labels"** ON
-6. Enter your WandB Run ID (optional - auto-generated if not provided)
-7. Execute!
-
-### Log Model Predictions
-
-1. First, run inference in your script:
-   ```python
-   model = foz.load_zoo_model("yolov8n-coco-torch")
-   dataset.apply_model(model, label_field="predictions")
-   ```
-2. Open FiftyOne App: `fo.launch_app(dataset)`
-3. Optionally select specific samples
-4. Click operators menu → **"W&B: Log Model Predictions"**
-5. Fill in model name and predictions field
-6. Execute!
-
----
-
-## Reproducing Experiments
-
-### Recreate Training Data
+### Recreate a Training View from W&B
 
 ![Load View from WandB](assets/load_view_from_wandb.gif)
 
-
-
-Every training view is stored with sample IDs in WandB metadata. You can recreate views either manually or using the plugin operator:
-
-**Option 1: Using the Plugin Operator (Recommended)**
-
-```python
-import fiftyone as fo
-import fiftyone.operators as foo
-
-# Open your dataset
-dataset = fo.load_dataset("my_dataset")
-session = fo.launch_app(dataset)
-
-# Use the operator to load the view from WandB
-# This can be done via the UI (backtick menu → "W&B: Load View from Artifact")
-# Or programmatically:
-operator = foo.get_operator("@harpreetsahota/wandb/load_view_from_wandb")
-
-# Note: load_view_from_wandb currently works best through the UI
-# as it needs interactive project/artifact selection
-```
-
-**Option 2: Manual Reconstruction**
+Every training view is stored with sample IDs in W&B metadata. Recreate views months later:
 
 ```python
 import fiftyone as fo
@@ -373,31 +161,65 @@ dataset = fo.load_dataset("my_dataset")
 train_view = dataset.select(sample_ids)
 
 print(f"Recreated training view with {len(train_view)} samples")
-
-# Now you can:
-# - Retrain on the exact same data
-# - Analyze what made this experiment work
-# - Compare against other versions
 ```
 
-### Link Predictions Back to Runs
+Or use the plugin operator directly:
 
 ```python
-import fiftyone.operators as foo
-
-# After training in WandB
-operator = foo.get_operator("@harpreetsahota/wandb/log_wandb_run")
-operator(
+load_view = foo.get_operator("@harpreetsahota/wandb/load_view_from_wandb")
+recreated_view = load_view(
     dataset,
-    project_name="my-project",
-    run_name="experiment-42",
-    predictions_field="predictions"  # Links this field to the run
+    project="my-project",
+    artifact="training_view:latest"
 )
-
-# Now in FiftyOne App:
-# - Click the WandB button
-# - Automatically opens the dashboard for this run
 ```
+
+---
+
+## Using the FiftyOne App
+
+All operators have interactive UIs in the FiftyOne App:
+
+1. Open your dataset: `fo.launch_app(dataset)`
+2. Press backtick (`) to open the operators menu
+3. Select a W&B operator:
+   - **"W&B: Save View as Artifact"** - Log training data
+   - **"W&B: Log Model Predictions"** - Log inference results
+   - **"W&B: Load View from Artifact"** - Recreate views
+   - **"Show W&B Run"** - View training curves alongside your data
+   - **"Show W&B Report"** - Embed reports in the panel
+
+---
+
+## Plugin Operators
+
+![Show W&B Report](assets/show_wandb_report.gif)
+
+### Core Operators
+
+| Operator | Purpose |
+|----------|---------|
+| `log_fiftyone_view_to_wandb` | Log training data views as W&B artifacts |
+| `log_model_predictions` | Log inference results to W&B |
+| `load_view_from_wandb` | Recreate FiftyOne view from W&B artifact |
+| `log_wandb_run` | Link W&B run to FiftyOne dataset |
+| `show_wandb_run` | Display W&B run in FiftyOne panel |
+| `show_wandb_report` | Display W&B report in FiftyOne panel |
+| `open_wandb_panel` | Open W&B panel in FiftyOne App |
+| `get_wandb_run_info` | Retrieve run metadata |
+
+### Training Workflow Examples
+
+The plugin also includes example operators for training workflows:
+
+| Operator | Purpose |
+|----------|---------|
+| `train_yolo_model` | Train YOLO models with W&B tracking |
+| `apply_yolo_model_from_registry` | Apply YOLO models from W&B model registry |
+
+These demonstrate how to build end-to-end training pipelines with full data-model lineage. See the [notebook](using_fo_wandb_plugin.ipynb) for usage examples.
+
+> **Future plans:** We're working on adding support for Hugging Face SFT Trainer workflows. Contributions welcome!
 
 ---
 
@@ -405,8 +227,8 @@ operator(
 
 The plugin automatically handles **all 15 FiftyOne label types**:
 
-| Type | Format in WandB Table |
-|------|----------------------|
+| Type | Format in W&B Table |
+|------|---------------------|
 | **Classification** | `"cat (0.95)"` |
 | **Detection** | `"dog (0.88)"` |
 | **Detections** | `"18 detections: person(5), car(3), dog(2)"` |
@@ -422,18 +244,38 @@ The plugin automatically handles **all 15 FiftyOne label types**:
 | **GeoLocations** | `"5 geolocations"` |
 | **Regression** | `"3.14 (0.89)"` |
 
-All labels are automatically detected and formatted for clear visualization in WandB Tables.
-
 ---
-After running, check your WandB dashboard:
-```
-https://wandb.ai/YOUR-ENTITY/test-project
+
+## Best Practices
+
+### 1. Log Training Views Early
+
+```python
+# Log right after wandb.init()
+wandb.init(project="my-project")
+log_view(view, project="my-project", run_id=wandb.run.id, include_labels=True)
+# Train...
+wandb.finish()
 ```
 
-You should see:
-- Multiple dataset artifacts with metadata
-- Interactive WandB Tables showing labels
-- Sample IDs in artifact metadata (for reproducibility)
+### 2. Use Descriptive Artifact Names
+
+```python
+# Good: descriptive name
+log_view(view, artifact_name="coco_train_high_quality_v2", ...)
+
+# Less ideal: auto-generated
+log_view(view, ...)  # Creates "training_view_abc123"
+```
+
+### 3. Version Your Data
+
+```python
+# Track data improvements over time
+log_view(view_v1, artifact_name="training_data_v1", ...)
+# ... improve data curation ...
+log_view(view_v2, artifact_name="training_data_v2", ...)
+```
 
 ---
 
@@ -452,10 +294,10 @@ export FIFTYONE_WANDB_API_KEY="your-key"
 pip install wandb
 ```
 
-### "Could not find WandB run"
+### "Could not find W&B run"
 
 - Verify project name is correct
-- Ensure run ID exists in WandB
+- Ensure run ID exists in W&B
 - Check you have access to the project
 - Run must be finished before calling `log_fiftyone_view_to_wandb`
 
@@ -470,78 +312,6 @@ To keep artifacts small:
 
 ---
 
-## Plugin Operators
-
-![Show W&B Report](assets/show_wandb_report.gif)
-
-
-The plugin provides these operators (accessible via Python or FiftyOne App):
-
-| Operator | Purpose |
-|----------|---------|
-| `log_fiftyone_view_to_wandb` | Log training data to WandB |
-| `log_model_predictions` | Log inference results to WandB |
-| `load_view_from_wandb` | Recreate FiftyOne view from WandB artifact |
-| `log_wandb_run` | Link WandB run to FiftyOne dataset |
-| `show_wandb_run` | Display WandB run in FiftyOne panel |
-| `show_wandb_report` | Display WandB report in FiftyOne panel |
-| `open_wandb_panel` | Open WandB panel in FiftyOne App |
-| `get_wandb_run_info` | Retrieve run metadata |
-
----
-
-## Best Practices
-
-### 1. Always Log Training Views
-
-```python
-# ✅ Good: Track what data was used
-wandb.init(project="my-project")
-operator(train_view, project="my-project", run_id=wandb.run.id, include_labels=True)
-# Train...
-
-# ❌ Bad: No record of training data
-wandb.init(project="my-project")
-# Train... (what data was used? 🤷)
-```
-
-### 2. Use Descriptive Artifact Names
-
-```python
-# ✅ Good
-operator(view, artifact_name="coco_train_high_quality_v2", ...)
-
-# ❌ Bad (auto-generated)
-operator(view, ...)  # Creates "training_view_abc123"
-```
-
-### 3. Version Your Data
-
-```python
-# Track data improvements over time
-operator(view_v1, artifact_name="training_data_v1", ...)
-# ... improve data curation ...
-operator(view_v2, artifact_name="training_data_v2", ...)
-# ... compare results in WandB ...
-```
-
-### 4. Log Early in Training Scripts
-
-```python
-# ✅ Good: Log right after wandb.init()
-wandb.init(project="my-project")
-operator(view, project="my-project", run_id=wandb.run.id, include_labels=True)
-# Train...
-wandb.finish()
-
-# ❌ Bad: Logging at the end
-# Train...
-operator(...)  # Too late! Run may have failed
-wandb.finish()
-```
-
----
-
 ## Links
 
 - [FiftyOne Documentation](https://docs.voxel51.com/)
@@ -551,6 +321,12 @@ wandb.finish()
 
 ---
 
+## Contributing
+
+Have a training workflow you'd like to add? PRs are welcome! The YOLO operators serve as examples of how to integrate your own fine-tuning pipelines with full W&B tracking.
+
+---
+
 ## License
 
-This plugin is licensed under the Apache 2.0 license
+This plugin is licensed under the Apache 2.0 license.
