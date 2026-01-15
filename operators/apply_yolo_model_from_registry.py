@@ -5,8 +5,11 @@ Model Registry and apply it to their FiftyOne dataset for inference.
 """
 
 import os
+import uuid
+from collections import Counter
 from datetime import datetime
 
+import fiftyone.core.labels as fol
 import fiftyone.operators as foo
 import fiftyone.operators.types as types
 import wandb
@@ -15,8 +18,10 @@ from ..wandb_helpers import (
     create_mock_context,
     ensure_wandb_login,
     get_credentials,
+    get_run_url,
     get_wandb_api,
     prompt_for_missing_credentials,
+    sanitize_for_artifact,
     sanitize_for_run_key,
 )
 
@@ -43,6 +48,38 @@ def _ensure_cache_dir():
     """Create model cache directory if it doesn't exist."""
     os.makedirs(MODEL_CACHE_DIR, exist_ok=True)
     return MODEL_CACHE_DIR
+
+
+def _collect_label_ids(label):
+    """Extract all label IDs from a label object."""
+    if isinstance(label, fol.Detections):
+        return [d.id for d in label.detections]
+    elif isinstance(label, fol.Classification):
+        return [label.id] if hasattr(label, 'id') else []
+    elif isinstance(label, fol.Polylines):
+        return [p.id for p in label.polylines]
+    elif isinstance(label, fol.Keypoints):
+        return [k.id for k in label.keypoints]
+    elif hasattr(label, 'id'):
+        return [label.id]
+    return []
+
+
+def _calculate_class_distribution(view, pred_field):
+    """Calculate class distribution from predictions."""
+    all_classes = []
+    
+    for sample in view.iter_samples():
+        pred = sample[pred_field] if pred_field in sample else None
+        if isinstance(pred, fol.Detections):
+            all_classes.extend(d.label for d in pred.detections if d.label)
+        elif isinstance(pred, fol.Classification):
+            if pred.label:
+                all_classes.append(pred.label)
+        elif hasattr(pred, 'label') and pred.label:
+            all_classes.append(pred.label)
+    
+    return dict(Counter(all_classes))
 
 
 def _get_model_artifacts(api, entity, project_name):
@@ -136,6 +173,7 @@ def _apply_yolo_model(ctx):
     model_artifact = ctx.params["model_artifact"]
     predictions_field = ctx.params["predictions_field"]
     confidence_threshold = ctx.params.get("confidence_threshold", 0.25)
+    log_to_wandb = ctx.params.get("log_to_wandb", False)
     
     # Get target view
     target = ctx.target_view()
@@ -162,6 +200,87 @@ def _apply_yolo_model(ctx):
     # Apply model to target view
     target.apply_model(model, label_field=predictions_field)
     
+    # Initialize return values
+    wandb_url = None
+    predictions_artifact_name = None
+    total_predictions = 0
+    
+    # Log predictions to W&B with lineage
+    if log_to_wandb:
+        # Collect sample IDs and label IDs for lineage
+        sample_ids = target.values("id")
+        all_label_ids = []
+        for sample in target.iter_samples():
+            pred = sample[predictions_field] if predictions_field in sample else None
+            if pred:
+                all_label_ids.extend(_collect_label_ids(pred))
+        
+        total_predictions = len(all_label_ids)
+        
+        # Calculate class distribution
+        class_dist = _calculate_class_distribution(target, predictions_field)
+        
+        # Generate predictions artifact name
+        safe_model = sanitize_for_artifact(model_name)
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        predictions_artifact_name = f"{safe_model}_predictions_{timestamp}"
+        
+        # Create predictions artifact with lineage metadata
+        predictions_artifact = wandb.Artifact(
+            name=predictions_artifact_name,
+            type="predictions",
+            description=f"Predictions from {model_name} on {dataset.name}",
+            metadata={
+                # Model lineage
+                "source_model_artifact": model_artifact,
+                "model_name": model_name,
+                "task_type": task_type,
+                "confidence_threshold": confidence_threshold,
+                
+                # Dataset information
+                "fiftyone_dataset_name": dataset.name,
+                "fiftyone_dataset_size": len(dataset),
+                "fiftyone_view_size": len(target),
+                
+                # Sample and label tracking for lineage
+                "sample_ids": sample_ids,
+                "label_ids": all_label_ids,
+                "num_samples": len(sample_ids),
+                "total_predictions": total_predictions,
+                
+                # Statistics
+                "class_distribution": class_dist,
+                "num_classes": len(class_dist),
+                "predictions_field": predictions_field,
+                
+                # Timestamp
+                "inference_timestamp": datetime.now().isoformat(),
+            }
+        )
+        
+        # Create W&B run and log with lineage
+        run_id = f"inference_{uuid.uuid4().hex[:8]}"
+        
+        with wandb.init(project=project_name, id=run_id, entity=entity, reinit="finish_previous") as run:
+            # Use the model artifact to create lineage (this links predictions -> model)
+            run.use_artifact(model_artifact)
+            
+            # Log the predictions artifact
+            logged_artifact = run.log_artifact(predictions_artifact)
+            logged_artifact.wait()
+            
+            # Log run config
+            run.config.update({
+                "model_name": model_name,
+                "model_artifact": model_artifact,
+                "task_type": task_type,
+                "predictions_field": predictions_field,
+                "confidence_threshold": confidence_threshold,
+                "samples_processed": len(target),
+            })
+        
+        wandb_url = get_run_url(ctx, project_name, run_id)
+    
     # Register inference run in FiftyOne
     run_config = dataset.init_run()
     run_config.method = "wandb_model_inference"
@@ -173,6 +292,10 @@ def _apply_yolo_model(ctx):
     run_config.samples_processed = len(target)
     run_config.inference_timestamp = datetime.now().isoformat()
     run_config.artifact_metadata = artifact_metadata
+    if predictions_artifact_name:
+        run_config.predictions_artifact = f"{predictions_artifact_name}:latest"
+    if wandb_url:
+        run_config.wandb_url = wandb_url
     
     # Create run key
     safe_model = sanitize_for_run_key(model_name)
@@ -187,6 +310,9 @@ def _apply_yolo_model(ctx):
         "predictions_field": predictions_field,
         "samples_processed": len(target),
         "confidence_threshold": confidence_threshold,
+        "total_predictions": total_predictions,
+        "predictions_artifact": f"{predictions_artifact_name}:latest" if predictions_artifact_name else None,
+        "wandb_url": wandb_url,
     }
 
 
@@ -216,6 +342,7 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
         model_artifact,
         predictions_field="predictions",
         confidence_threshold=0.25,
+        log_to_wandb=False,
         delegate=False,
     ):
         """
@@ -227,10 +354,11 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
             model_artifact: Full artifact path (entity/project/name:version)
             predictions_field: Field to store predictions (default: "predictions")
             confidence_threshold: Minimum confidence for predictions (default: 0.25)
+            log_to_wandb: Log predictions to W&B with lineage (default: False)
             delegate: Run in background (default: False)
             
         Returns:
-            dict: Inference results
+            dict: Inference results including predictions artifact if logged
         """
         dataset = sample_collection._dataset
         view = sample_collection.view()
@@ -240,6 +368,7 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
             "model_artifact": model_artifact,
             "predictions_field": predictions_field,
             "confidence_threshold": confidence_threshold,
+            "log_to_wandb": log_to_wandb,
         })
         
         return _apply_yolo_model(ctx)
@@ -407,7 +536,16 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
             label="Confidence Threshold",
             description="Minimum confidence score for predictions (0.0 - 1.0)",
             default=0.25,
-            required=True
+        )
+        
+        # ===== W&B Logging Options =====
+        inputs.view("section_logging", types.Header(label="W&B Logging", divider=True))
+        
+        inputs.bool(
+            "log_to_wandb",
+            label="Log predictions to W&B",
+            description="Create a predictions artifact with lineage to the source model",
+            default=False
         )
         
         # ===== Execution Options =====
@@ -423,11 +561,8 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
         return types.Property(inputs)
     
     def resolve_delegation(self, ctx):
-        """Delegate based on user checkbox or large dataset."""
-        if ctx.params.get("delegate", False):
-            return True
-        # Auto-delegate for large datasets
-        return len(ctx.target_view()) > 1000
+        """Delegate based on user checkbox selection."""
+        return ctx.params.get("delegate", False)
     
     def execute(self, ctx):
         return _apply_yolo_model(ctx)
@@ -440,4 +575,7 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
         outputs.str("predictions_field", label="Predictions Field")
         outputs.int("samples_processed", label="Samples Processed")
         outputs.float("confidence_threshold", label="Confidence Threshold")
+        outputs.int("total_predictions", label="Total Predictions")
+        outputs.str("predictions_artifact", label="Predictions Artifact")
+        outputs.str("wandb_url", label="W&B Run URL", view=types.LinkView())
         return types.Property(outputs)
