@@ -338,14 +338,12 @@ def _log_fiftyone_view_to_wandb(ctx):
     # Ensure logged in
     get_wandb_api(ctx)
     
-    # Use resume="allow" to handle both existing and new runs
-    # reinit=True allows creating new runs in the same process
     run = wandb.init(
         project=project_name, 
         id=run_id, 
         resume="allow", 
         entity=entity,
-        reinit=True,
+        finish_previous=True,
     )
     
     # Log artifact (finish() will wait for uploads to complete)
