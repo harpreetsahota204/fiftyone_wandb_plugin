@@ -327,11 +327,9 @@ def _train_yolo_model(ctx):
     optimizer = ctx.params.get("optimizer", "auto")
     patience = ctx.params.get("patience", 50)
     
-    # Optional: validation split
+    # Optional: validation split (tag name)
     val_split = ctx.params.get("val_split")
-    val_view = None
-    if val_split:
-        val_view = dataset.match_tags(val_split)
+    val_view = dataset.match_tags(val_split) if val_split else None
     
     # Optional: resume existing W&B run
     run_id = ctx.params.get("run_id")
@@ -533,7 +531,7 @@ class TrainYOLOModel(foo.Operator):
         learning_rate=0.01,
         optimizer="auto",
         patience=50,
-        val_view=None,
+        val_split=None,
         run_id=None,
         dataset_artifact=None,
         model_artifact_name=None,
@@ -554,7 +552,7 @@ class TrainYOLOModel(foo.Operator):
             learning_rate: Initial learning rate (default: 0.01)
             optimizer: Optimizer - 'auto', 'SGD', 'Adam', 'AdamW', etc. (default: 'auto')
             patience: Early stopping patience in epochs (default: 50)
-            val_view: Optional validation view
+            val_split: Tag name for validation samples (e.g., "val")
             run_id: W&B run ID to resume (auto-generated if not provided)
             dataset_artifact: W&B dataset artifact name for lineage
             model_artifact_name: Custom name for output model artifact
@@ -579,6 +577,7 @@ class TrainYOLOModel(foo.Operator):
             "learning_rate": learning_rate,
             "optimizer": optimizer,
             "patience": patience,
+            "val_split": val_split,
             "run_id": run_id,
             "dataset_artifact": dataset_artifact,
             "model_artifact_name": model_artifact_name,
