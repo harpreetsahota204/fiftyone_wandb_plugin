@@ -398,13 +398,14 @@ def _log_model_predictions(ctx):
     artifact.add(table, "predictions")
     
     # 7. Upload to WandB
-    # Get API (handles login internally)
+    # Ensure logged in
     get_wandb_api(ctx)
     
     run_id = f"predictions_{uuid.uuid4().hex[:8]}"
     
-    with wandb.init(project=project_name, id=run_id, resume="allow", entity=entity) as run:
-        run.log_artifact(artifact)
+    with wandb.init(project=project_name, id=run_id, entity=entity, reinit="finish_previous") as run:
+        logged_artifact = run.log_artifact(artifact)
+        logged_artifact.wait()
         run.config.update({
             "model_name": model_name,
             "model_version": model_version,
