@@ -100,7 +100,6 @@ YOLO_MODELS = {
 # Default training directory
 TRAIN_ROOT = "/tmp/fiftyone_yolo_training"
 
-
 # ============================================================================
 # HELPER FUNCTIONS
 # ============================================================================
@@ -393,11 +392,7 @@ def _train_yolo_model(ctx):
     # Declare dataset artifact as input (creates lineage)
     dataset_artifact = None
     if dataset_artifact_name:
-        try:
-            dataset_artifact = run.use_artifact(dataset_artifact_name)
-            print(f"Using dataset artifact: {dataset_artifact.name}")
-        except Exception as e:
-            print(f"Warning: Could not use dataset artifact: {e}")
+        dataset_artifact = run.use_artifact(dataset_artifact_name)
     
     # ========== PHASE 3: Train Model ==========
     # Initialize YOLO model
@@ -516,10 +511,6 @@ class TrainYOLOModel(foo.Operator):
             description="Train an Ultralytics YOLO model on your view and log results to W&B",
             dynamic=True,
             icon="/assets/wandb.svg",
-            execution_options=foo.ExecutionOptions(
-                allow_immediate=True,  # Allow immediate for testing, but delegation preferred
-                allow_delegation=True,
-            ),
         )
     
     def __call__(
@@ -539,6 +530,7 @@ class TrainYOLOModel(foo.Operator):
         run_id=None,
         dataset_artifact=None,
         model_artifact_name=None,
+        delegate=False
     ):
         """
         Programmatic interface for training YOLO models with W&B logging.
@@ -750,17 +742,16 @@ class TrainYOLOModel(foo.Operator):
         artifact_names = set()
         
         if project_name:
-            try:
-                runs = list(api.runs(path=f"{entity}/{project_name}", per_page=50))
-                existing_runs = runs
-                
-                # Also collect dataset artifacts for lineage
-                for run in runs:
-                    for artifact in run.logged_artifacts():
-                        if artifact.type == "dataset":
-                            artifact_names.add(f"{artifact.name}:latest")
-            except Exception:
-                pass  # Silently skip if can't fetch
+            runs = list(api.runs(path=f"{entity}/{project_name}", per_page=50))
+            existing_runs = runs
+            
+            # Also collect dataset artifacts for lineage
+            for run in runs:
+                for artifact in run.logged_artifacts():
+                    if artifact.type == "dataset":
+                        # Use full qualified name: entity/project/name:alias
+                        full_name = f"{entity}/{project_name}/{artifact.name}:latest"
+                        artifact_names.add(full_name)
         
         # Run ID selector - allows selecting existing run OR typing new ID
         if existing_runs:
