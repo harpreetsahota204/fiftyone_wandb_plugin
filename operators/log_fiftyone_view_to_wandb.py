@@ -298,7 +298,7 @@ def _log_fiftyone_view_to_wandb(ctx):
     else:
         artifact_name = f"dataset_view_{run_id[:8]}"
     
-    # 3. Create artifact
+    # Prepare metadata BEFORE wandb.init (no wandb objects here)
     metadata = extract_dataset_metadata(dataset, view)
     if is_subset_view(view):
         metadata["view_serialization"] = serialize_view(view)
@@ -311,6 +311,20 @@ def _log_fiftyone_view_to_wandb(ctx):
     metadata["sample_ids"] = sample_ids
     metadata["num_samples"] = len(sample_ids)
     
+    # Ensure clean W&B state before starting
+    if wandb.run is not None:
+        wandb.finish()
+    
+    # Initialize run with resume="allow" for loop compatibility
+    run = wandb.init(
+        project=project_name,
+        id=run_id,
+        entity=entity,
+        resume="allow",
+    )
+    
+    # Create artifact AFTER wandb.init() to ensure correct client state
+    # hope this fixes "Invalid Client ID digest" errors in loops
     artifact = wandb.Artifact(
         name=artifact_name,
         type="dataset",
@@ -318,7 +332,7 @@ def _log_fiftyone_view_to_wandb(ctx):
         metadata=metadata
     )
     
-    # 4. Add data (labels or lightweight references)
+    # Add data (labels or lightweight references)
     if ctx.params.get("include_labels", False):
         _add_labels_table(artifact, view)
     else:
@@ -330,20 +344,9 @@ def _log_fiftyone_view_to_wandb(ctx):
         if embedding_field:
             _add_embeddings(artifact, view, embedding_field)
     
-    # 5. Upload to WandB
-    # Ensure logged in
-    get_wandb_api(ctx)
-    
-    run = wandb.init(
-        project=project_name,
-        id=run_id,
-        entity=entity,
-        reinit="finish_previous",  # Auto-finish any previous run
-    )
-    
-    # Log artifact and wait for upload to complete before finishing
-    run.log_artifact(artifact)
-    # logged_artifact.wait()
+    # Log artifact and wait for upload to complete
+    logged_artifact = run.log_artifact(artifact)
+    logged_artifact.wait()
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",
@@ -352,12 +355,13 @@ def _log_fiftyone_view_to_wandb(ctx):
         "fiftyone_is_subset": is_subset_view(view),
     })
     
-    run.finish()
+    # Finish run - important for loop usage
+    wandb.finish()
     
     # Construct URL ourselves to respect FIFTYONE_WANDB_URL setting
     wandb_url = get_run_url(ctx, project_name, run_id)
     
-    # 6. Register in FiftyOne
+    # Register in FiftyOne
     run_config = dataset.init_run()
     run_config.method = "wandb_training"
     run_config.wandb_run_id = run_id
