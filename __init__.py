@@ -21,6 +21,7 @@ from .operators import (
     LogFiftyOneViewToWandB,
     LogModelPredictions,
     LoadViewFromWandB,
+    TrainYOLOModel,
 )
 
 
@@ -34,3 +35,4 @@ def register(plugin):
     plugin.register(LogFiftyOneViewToWandB)
     plugin.register(LogModelPredictions)
     plugin.register(LoadViewFromWandB)
+    plugin.register(TrainYOLOModel)
