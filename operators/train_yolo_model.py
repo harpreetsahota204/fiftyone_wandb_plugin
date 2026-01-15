@@ -474,11 +474,6 @@ def _train_yolo_model(ctx, progress_callback=None):
         )
         model_artifact.add_file(weights_path, name="best.pt")
         
-        # Also add last.pt if available
-        last_weights = os.path.join(train_output_dir, "weights", "last.pt")
-        if os.path.exists(last_weights):
-            model_artifact.add_file(last_weights, name="last.pt")
-        
         logged_artifact = run.log_artifact(model_artifact)
         logged_artifact.wait()
     
@@ -539,7 +534,6 @@ class TrainYOLOModel(foo.Operator):
             execution_options=foo.ExecutionOptions(
                 allow_immediate=True,  # Allow immediate for testing, but delegation preferred
                 allow_delegation=True,
-                default_choice_to_delegated=True,
             ),
         )
     
@@ -765,35 +759,57 @@ class TrainYOLOModel(foo.Operator):
             view=types.DropdownView()
         )
         
-        # Optional: run ID to resume
-        inputs.str(
-            "run_id",
-            label="W&B Run ID (optional)",
-            description="Leave empty to create new run, or enter ID to resume existing run"
-        )
-        
-        # Optional: link to existing dataset artifact
+        # Fetch runs and artifacts from selected project
         project_name = ctx.params.get("project")
+        existing_runs = []
+        artifact_names = set()
+        
         if project_name:
             try:
-                runs = api.runs(path=f"{entity}/{project_name}", per_page=50)
-                artifact_names = set()
+                runs = list(api.runs(path=f"{entity}/{project_name}", per_page=50))
+                existing_runs = runs
+                
+                # Also collect dataset artifacts for lineage
                 for run in runs:
                     for artifact in run.logged_artifacts():
                         if artifact.type == "dataset":
                             artifact_names.add(f"{artifact.name}:latest")
-                
-                if artifact_names:
-                    artifact_choices = [types.Choice(label=a, value=a) for a in sorted(artifact_names)]
-                    inputs.enum(
-                        "dataset_artifact",
-                        [c.value for c in artifact_choices],
-                        label="Link Dataset Artifact (optional)",
-                        description="Creates artifact lineage in W&B",
-                        view=types.AutocompleteView(choices=artifact_choices)
-                    )
             except Exception:
-                pass  # Silently skip if can't fetch artifacts
+                pass  # Silently skip if can't fetch
+        
+        # Run ID selector - allows selecting existing run OR typing new ID
+        if existing_runs:
+            # Build choices with run ID as value and descriptive label
+            run_choices = []
+            for run in existing_runs:
+                # Format: "run_id - run_name (state)"
+                label = f"{run.id} - {run.name} ({run.state})"
+                run_choices.append(types.Choice(label=label, value=run.id))
+            
+            inputs.str(
+                "run_id",
+                label="W&B Run ID (optional)",
+                description="Select existing run to resume, type custom ID, or leave empty to auto-generate",
+                view=types.AutocompleteView(choices=run_choices)
+            )
+        else:
+            # No existing runs - just show text input
+            inputs.str(
+                "run_id",
+                label="W&B Run ID (optional)",
+                description="Leave empty to auto-generate, or enter custom ID for new run"
+            )
+        
+        # Optional: link to existing dataset artifact
+        if artifact_names:
+            artifact_choices = [types.Choice(label=a, value=a) for a in sorted(artifact_names)]
+            inputs.enum(
+                "dataset_artifact",
+                [c.value for c in artifact_choices],
+                label="Link Dataset Artifact (optional)",
+                description="Creates artifact lineage in W&B",
+                view=types.AutocompleteView(choices=artifact_choices)
+            )
         
         # Model artifact name
         inputs.str(
@@ -816,8 +832,8 @@ class TrainYOLOModel(foo.Operator):
         return types.Property(inputs)
     
     def resolve_delegation(self, ctx):
-        """Always delegate training to background worker."""
-        return True
+        """Allow user to choose execution mode."""
+        return False
     
     def execute(self, ctx):
         def progress_callback(progress, label):
