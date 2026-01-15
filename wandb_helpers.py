@@ -328,8 +328,8 @@ def get_artifact_versions(api, entity, project_name, type_name="dataset"):
         type_name=type_name
     )
     for collection in collections:
-        # Get all versions in this collection
-        for artifact in collection.versions():
+        # Get all artifacts (versions) in this collection
+        for artifact in collection.artifacts():
             artifact_names.append(artifact.name)
     return artifact_names
 
