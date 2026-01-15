@@ -331,27 +331,19 @@ def _log_fiftyone_view_to_wandb(ctx):
             _add_embeddings(artifact, view, embedding_field)
     
     # 5. Upload to WandB
-    # Fully reset W&B singleton state to avoid stale client ID errors in loops
-    # wandb.teardown() clears all internal state including the client ID digest
-    if wandb.run is not None:
-        wandb.finish()
-    wandb.teardown()
-    
     # Ensure logged in
     get_wandb_api(ctx)
     
     run = wandb.init(
-        project=project_name, 
-        id=run_id, 
-        resume="allow", 
+        project=project_name,
+        id=run_id,
         entity=entity,
+        reinit="finish_previous",  # Auto-finish any previous run
     )
     
-    # Log artifact and explicitly wait for upload to complete
-    # This is critical for loop scenarios - W&B's singleton architecture
-    # can have stale client state if we don't block on upload completion
+    # Log artifact and wait for upload to complete before finishing
     logged_artifact = run.log_artifact(artifact)
-    logged_artifact.wait()  # Block until artifact upload is fully complete
+    logged_artifact.wait()
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",
@@ -360,8 +352,6 @@ def _log_fiftyone_view_to_wandb(ctx):
         "fiftyone_is_subset": is_subset_view(view),
     })
     
-    # Finish this specific run instance (not global wandb.finish())
-    # to ensure clean state for subsequent calls
     run.finish()
     
     # Construct URL ourselves to respect FIFTYONE_WANDB_URL setting
