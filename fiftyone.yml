@@ -18,6 +18,7 @@ operators:
   - log_model_predictions
   - load_view_from_wandb
   - train_yolo_model
+  - apply_yolo_model_from_registry
 
 # TypeScript/React panels
 panels:
