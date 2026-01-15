@@ -342,8 +342,8 @@ def _log_fiftyone_view_to_wandb(ctx):
     )
     
     # Log artifact and wait for upload to complete before finishing
-    logged_artifact = run.log_artifact(artifact)
-    logged_artifact.wait()
+    run.log_artifact(artifact)
+    # logged_artifact.wait()
     
     run.config.update({
         "fiftyone_view_artifact": f"{artifact_name}:latest",
