@@ -174,6 +174,8 @@ def _apply_yolo_model(ctx):
     predictions_field = ctx.params["predictions_field"]
     confidence_threshold = ctx.params.get("confidence_threshold", 0.25)
     log_to_wandb = ctx.params.get("log_to_wandb", False)
+    run_name = ctx.params.get("run_name")
+    predictions_artifact_name = ctx.params.get("predictions_artifact_name")
     
     # Get target view
     target = ctx.target_view()
@@ -202,8 +204,9 @@ def _apply_yolo_model(ctx):
     
     # Initialize return values
     wandb_url = None
-    predictions_artifact_name = None
+    wandb_run_id = None
     total_predictions = 0
+    final_artifact_name = None
     
     # Log predictions to W&B with lineage
     if log_to_wandb:
@@ -220,14 +223,17 @@ def _apply_yolo_model(ctx):
         # Calculate class distribution
         class_dist = _calculate_class_distribution(target, predictions_field)
         
-        # Generate predictions artifact name
-        safe_model = sanitize_for_artifact(model_name)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        predictions_artifact_name = f"{safe_model}_predictions_{timestamp}"
+        # Generate predictions artifact name (use provided name or auto-generate)
+        if predictions_artifact_name:
+            final_artifact_name = sanitize_for_artifact(predictions_artifact_name)
+        else:
+            safe_model = sanitize_for_artifact(model_name)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            final_artifact_name = f"{safe_model}_predictions_{timestamp}"
         
         # Create predictions artifact with lineage metadata
         predictions_artifact = wandb.Artifact(
-            name=predictions_artifact_name,
+            name=final_artifact_name,
             type="predictions",
             description=f"Predictions from {model_name} on {dataset.name}",
             metadata={
@@ -259,9 +265,9 @@ def _apply_yolo_model(ctx):
         )
         
         # Create W&B run and log with lineage
-        run_id = f"inference_{uuid.uuid4().hex[:8]}"
+        wandb_run_id = run_name if run_name else f"inference_{uuid.uuid4().hex[:8]}"
         
-        with wandb.init(project=project_name, id=run_id, entity=entity, reinit="finish_previous") as run:
+        with wandb.init(project=project_name, id=wandb_run_id, name=run_name, entity=entity, reinit="finish_previous") as run:
             # Use the model artifact to create lineage (this links predictions -> model)
             run.use_artifact(model_artifact)
             
@@ -279,7 +285,7 @@ def _apply_yolo_model(ctx):
                 "samples_processed": len(target),
             })
         
-        wandb_url = get_run_url(ctx, project_name, run_id)
+        wandb_url = get_run_url(ctx, project_name, wandb_run_id)
     
     # Register inference run in FiftyOne
     run_config = dataset.init_run()
@@ -292,8 +298,8 @@ def _apply_yolo_model(ctx):
     run_config.samples_processed = len(target)
     run_config.inference_timestamp = datetime.now().isoformat()
     run_config.artifact_metadata = artifact_metadata
-    if predictions_artifact_name:
-        run_config.predictions_artifact = f"{predictions_artifact_name}:latest"
+    if final_artifact_name:
+        run_config.predictions_artifact = f"{final_artifact_name}:latest"
     if wandb_url:
         run_config.wandb_url = wandb_url
     
@@ -311,7 +317,8 @@ def _apply_yolo_model(ctx):
         "samples_processed": len(target),
         "confidence_threshold": confidence_threshold,
         "total_predictions": total_predictions,
-        "predictions_artifact": f"{predictions_artifact_name}:latest" if predictions_artifact_name else None,
+        "predictions_artifact": f"{final_artifact_name}:latest" if final_artifact_name else None,
+        "run_name": wandb_run_id,
         "wandb_url": wandb_url,
     }
 
@@ -343,6 +350,8 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
         predictions_field="predictions",
         confidence_threshold=0.25,
         log_to_wandb=False,
+        run_name=None,
+        predictions_artifact_name=None,
         delegate=False,
     ):
         """
@@ -355,6 +364,8 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
             predictions_field: Field to store predictions (default: "predictions")
             confidence_threshold: Minimum confidence for predictions (default: 0.25)
             log_to_wandb: Log predictions to W&B with lineage (default: False)
+            run_name: Custom W&B run name (optional, auto-generated if not provided)
+            predictions_artifact_name: Custom predictions artifact name (optional)
             delegate: Run in background (default: False)
             
         Returns:
@@ -369,6 +380,8 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
             "predictions_field": predictions_field,
             "confidence_threshold": confidence_threshold,
             "log_to_wandb": log_to_wandb,
+            "run_name": run_name,
+            "predictions_artifact_name": predictions_artifact_name,
         })
         
         return _apply_yolo_model(ctx)
@@ -548,6 +561,20 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
             default=False
         )
         
+        # Only show these fields if log_to_wandb is enabled
+        if ctx.params.get("log_to_wandb", False):
+            inputs.str(
+                "run_name",
+                label="Run Name (optional)",
+                description="Custom name for the W&B run (auto-generated if not provided)",
+            )
+            
+            inputs.str(
+                "predictions_artifact_name",
+                label="Predictions Artifact Name (optional)",
+                description="Custom name for the predictions artifact (auto-generated if not provided)",
+            )
+        
         # ===== Execution Options =====
         inputs.view("section_execution", types.Header(label="Execution Options", divider=True))
         
@@ -577,5 +604,6 @@ class ApplyYOLOModelFromRegistry(foo.Operator):
         outputs.float("confidence_threshold", label="Confidence Threshold")
         outputs.int("total_predictions", label="Total Predictions")
         outputs.str("predictions_artifact", label="Predictions Artifact")
+        outputs.str("run_name", label="W&B Run Name")
         outputs.str("wandb_url", label="W&B Run URL", view=types.LinkView())
         return types.Property(outputs)
